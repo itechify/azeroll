@@ -11,6 +11,8 @@ export async function prepareData() {
   let reason='';
   const local=new URLSearchParams(location.search).has('localdata');
   if (!local && hostedBase()) {
+    const {installHostedFetch}=await import('./hosted-fetch.js');
+    installHostedFetch(hostedBase());
     const status=document.createElement('p');status.textContent='Checking game data…';
     status.style.cssText='position:fixed;inset:40% 10%;color:#ffd25a;text-align:center;font:24px Georgia';document.body.append(status);
     try {
