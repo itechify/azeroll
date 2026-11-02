@@ -249,7 +249,7 @@ pub(super) fn attach_entity_visuals(
     // never alias.
     mut built_poses: Query<&mut benilla_world::rig_anim::RigPose>,
     displays: Option<Res<super::ItemDisplays>>,
-    mut transforms: Query<&mut Transform>,
+    mut transforms: Query<&mut Transform, Without<super::Carried>>,
     assets: Res<CubeAssets>,
     creatures: Option<Res<Creatures>>,
     gameobjects: Option<Res<GameObjects>>,

@@ -1,0 +1,83 @@
+[
+  {
+    "file": "overhead-0-0.png",
+    "x_min": -9250,
+    "x_max": -8850,
+    "y_min": 260,
+    "y_max": 660,
+    "north": "top",
+    "projection": "orthographic"
+  },
+  {
+    "file": "overhead-0-1.png",
+    "x_min": -9250,
+    "x_max": -8850,
+    "y_min": -140,
+    "y_max": 260,
+    "north": "top",
+    "projection": "orthographic"
+  },
+  {
+    "file": "overhead-0-2.png",
+    "x_min": -9250,
+    "x_max": -8850,
+    "y_min": -540,
+    "y_max": -140,
+    "north": "top",
+    "projection": "orthographic"
+  },
+  {
+    "file": "overhead-1-0.png",
+    "x_min": -9650,
+    "x_max": -9250,
+    "y_min": 260,
+    "y_max": 660,
+    "north": "top",
+    "projection": "orthographic"
+  },
+  {
+    "file": "overhead-1-1.png",
+    "x_min": -9650,
+    "x_max": -9250,
+    "y_min": -140,
+    "y_max": 260,
+    "north": "top",
+    "projection": "orthographic"
+  },
+  {
+    "file": "overhead-1-2.png",
+    "x_min": -9650,
+    "x_max": -9250,
+    "y_min": -540,
+    "y_max": -140,
+    "north": "top",
+    "projection": "orthographic"
+  },
+  {
+    "file": "overhead-2-0.png",
+    "x_min": -10050,
+    "x_max": -9650,
+    "y_min": 260,
+    "y_max": 660,
+    "north": "top",
+    "projection": "orthographic"
+  },
+  {
+    "file": "overhead-2-1.png",
+    "x_min": -10050,
+    "x_max": -9650,
+    "y_min": -140,
+    "y_max": 260,
+    "north": "top",
+    "projection": "orthographic"
+  },
+  {
+    "file": "overhead-2-2.png",
+    "x_min": -10050,
+    "x_max": -9650,
+    "y_min": -540,
+    "y_max": -140,
+    "north": "top",
+    "projection": "orthographic"
+  }
+]

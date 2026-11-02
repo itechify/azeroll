@@ -28,6 +28,9 @@ use benilla_assets::MapCatalogRes;
 use benilla_assets::RenderConfig;
 use benilla_assets::{m2_url, wmo_url};
 
+mod claims;
+pub use claims::{ClaimQuery, DoodadClaimed, DoodadReleased, PlacementClaims};
+
 mod collider;
 mod furnish;
 pub mod merge;
@@ -147,6 +150,8 @@ impl Placements {
 /// A shared placement: its model, transform and spawned entities.
 struct Placement {
     model: ModelHandle,
+    /// Claimed placements are already settled, own no engine geometry, and never hand off.
+    claimed: bool,
     transform: Transform,
     /// Spawned submesh entities, WMO prop submeshes included so they despawn together.
     entities: Vec<Entity>,
@@ -378,6 +383,9 @@ impl Plugin for TerrainPlugin {
             .init_resource::<TerrainStreamer>()
             .init_resource::<StreamActivity>()
             .init_resource::<Placements>()
+            .init_resource::<PlacementClaims>()
+            .add_message::<DoodadClaimed>()
+            .add_message::<DoodadReleased>()
             .init_resource::<HullWelds>()
             .init_resource::<StaticMerge>()
             .init_resource::<crate::model_forms::ModelForms>()
@@ -457,6 +465,7 @@ fn stream_terrain(
         Res<Assets<WdtIndex>>,
         Res<Time>,
         ResMut<StreamActivity>,
+        Res<PlacementClaims>,
     ),
     liquid_assets: Option<Res<LiquidAssets>>,
     clutter: Option<Res<GroundClutter>>,
@@ -481,7 +490,7 @@ fn stream_terrain(
     ),
 ) {
     let (mut welds, mut static_merge, mut staticgx) = batchers;
-    let (mut materials, mut meshes, wdts, _time, mut activity) = asset_stores;
+    let (mut materials, mut meshes, wdts, _time, mut activity, claims) = asset_stores;
     let (current_map, map_catalog, view) = location;
     // Idle until other plugins' startup has made the light buffer and the map catalog.
     let (Some(shared_light), Some(map_catalog)) = (shared_light, map_catalog) else {
@@ -748,7 +757,7 @@ fn stream_terrain(
         // Placements register by uniqueId; their ground shade resolves at spawn by a global lookup,
         // since a doodad's origin may lie on another tile.
         for d in &adt.doodads {
-            register_doodad(placements, &asset_server, d, (tx, ty));
+            register_doodad(placements, &asset_server, d, (tx, ty), &claims, &mut commands);
             tile.placements.push(d.unique_id);
         }
         for w in &adt.wmos {
@@ -903,23 +912,45 @@ fn register_doodad(
     asset_server: &AssetServer,
     d: &Doodad,
     tile: (i32, i32),
+    claims: &PlacementClaims,
+    commands: &mut Commands,
 ) {
     if let Some(p) = placements.by_id.get_mut(&d.unique_id) {
         p.refs += 1;
         return;
+    }
+    let query = ClaimQuery {
+        unique_id: d.unique_id,
+        model: d.model.clone(),
+        transform: Transform {
+            translation: wow_to_bevy(d.position),
+            rotation: placement_rotation(d.rotation),
+            scale: Vec3::splat(d.scale),
+        },
+    };
+    let claimed = claims.predicate.as_ref().is_some_and(|claim| claim(&query));
+    if claimed {
+        commands.queue(move |world: &mut World| {
+            world.write_message(DoodadClaimed {
+                unique_id: query.unique_id,
+                model: query.model,
+                transform: query.transform,
+            });
+        });
     }
     let handle: Handle<M2Model> = asset_server.load(m2_url(&d.model));
     placements.by_id.insert(
         d.unique_id,
         Placement {
             model: ModelHandle::M2(handle),
+            claimed,
             transform: Transform {
                 translation: wow_to_bevy(d.position),
                 rotation: placement_rotation(d.rotation),
                 scale: Vec3::splat(d.scale),
             },
             entities: Vec::new(),
-            spawned: false,
+            spawned: claimed,
             doodad_set: 0, // M2 doodads carry no doodad set
             name_set: 0,
             doodads: Vec::new(),
@@ -928,7 +959,7 @@ fn register_doodad(
             owner: tile,
         },
     );
-    placements.pending_spawns += 1;
+    placements.pending_spawns += usize::from(!claimed);
 }
 
 /// Register one WMO placement, or bump its refcount; a 1.12 WMO placement has no scale.
@@ -942,6 +973,7 @@ fn register_wmo(placements: &mut Placements, asset_server: &AssetServer, w: &Wmo
         w.unique_id,
         Placement {
             model: ModelHandle::Wmo(handle),
+            claimed: false,
             transform: Transform {
                 translation: wow_to_bevy(w.position),
                 rotation: placement_rotation(w.rotation),
@@ -1145,7 +1177,7 @@ fn handoff_straddlers(
             placements
                 .by_id
                 .get(uid)
-                .is_some_and(|p| p.owner == dead && matches!(p.model, ModelHandle::M2(_)))
+                .is_some_and(|p| !p.claimed && p.owner == dead && matches!(p.model, ModelHandle::M2(_)))
         })
         .map(|uid| (uid, None))
         .collect();
@@ -1227,6 +1259,11 @@ fn release_placement(
     };
     if drop_it {
         if let Some(p) = placements.by_id.remove(&uid) {
+            if p.claimed {
+                commands.queue(move |world: &mut World| {
+                    world.write_message(DoodadReleased { unique_id: uid });
+                });
+            }
             // Its unspawned model and props leave the pending count with it.
             placements.pending_spawns -=
                 usize::from(!p.spawned) + p.doodads.iter().filter(|d| !d.spawned).count();
@@ -1327,6 +1364,7 @@ mod straddler_tests {
     fn straddler(owner: (i32, i32), entities: Vec<Entity>) -> Placement {
         Placement {
             model: ModelHandle::M2(Default::default()),
+            claimed: false,
             transform: Transform::IDENTITY,
             entities,
             spawned: true,

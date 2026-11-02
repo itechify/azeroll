@@ -9,6 +9,9 @@ use bevy::mesh::{Indices, MeshTag, PrimitiveTopology};
 use bevy::prelude::*;
 use bevy::render::render_resource::Buffer;
 
+use crate::azeroll::hud_models::HudMaterial;
+use crate::survivors::fill::FillMaterial;
+use crate::survivors::hud::SweepUiMaterial;
 use benilla_assets::materials::{LiquidMaterial, WowModelMaterial};
 use benilla_world::clouds::CloudMaterial;
 use benilla_world::model_render::{
@@ -16,6 +19,7 @@ use benilla_world::model_render::{
 };
 use benilla_world::sky::SkyMaterial;
 use benilla_world::sun::{CelestialMaterial, StarMaterial};
+use bevy::ui_render::ui_material::UiMaterial;
 
 use super::WarmRig;
 
@@ -43,6 +47,11 @@ pub(super) struct WarmLanes<'w> {
     pub(super) images: ResMut<'w, Assets<Image>>,
     /// For the minimap interior composite's tile material, through its production builder.
     ui_quads: ResMut<'w, Assets<crate::ui_pass::UiQuadMaterial>>,
+    /// The in-run UI materials, each registered by its own mode's plugin: `None` in the other
+    /// mode, which never adds that plugin.
+    hud: Option<ResMut<'w, Assets<HudMaterial>>>,
+    sweeps: Option<ResMut<'w, Assets<SweepUiMaterial>>>,
+    fills: Option<ResMut<'w, Assets<FillMaterial>>>,
 }
 
 /// A portrait booth camera and its layer. Booths run `Msaa::Off`, so each model pipeline has a
@@ -535,6 +544,27 @@ pub(super) fn spawn_menagerie(
         &mut count,
     );
 
+    // The in-run HUD's `UiMaterialPlugin` lanes. Each material gets a root node, so no camera
+    // view or mesh layout is involved, only the UI material pipeline. The uniforms are the rest
+    // state a live widget starts from, so nothing here is special-cased.
+    let ui_tex = lanes.images.add(Image::default());
+    if let Some(hud) = lanes.hud.as_mut() {
+        let mat = hud.add(HudMaterial {
+            kt: Vec4::ZERO,
+            p: Vec4::ZERO,
+            tex: ui_tex.clone(),
+        });
+        spawn_ui_lane_rig(commands, mat, &mut count);
+    }
+    if let Some(sweeps) = lanes.sweeps.as_mut() {
+        let mat = sweeps.add(SweepUiMaterial { sweep: 0.0 });
+        spawn_ui_lane_rig(commands, mat, &mut count);
+    }
+    if let Some(fills) = lanes.fills.as_mut() {
+        let mat = fills.add(FillMaterial::radial(Color::NONE, Color::NONE));
+        spawn_ui_lane_rig(commands, mat, &mut count);
+    }
+
     // The minimap interior composite's tile quad: a `Material2d` pipeline is keyed on the mesh
     // layout too, and its `Rectangle` differs from the HUD batch mesh. The composite's camera is
     // inactive outside a WMO interior, but its view key equals the player-UI camera's, so this
@@ -645,6 +675,25 @@ fn spawn_lane_rig<M: Material>(
     if let Some(layers) = layers {
         e.insert(layers);
     }
+    *count += 1;
+}
+
+/// One UI-material rig: a 1 px root node parked far off-screen, so a visible frame draws nothing.
+/// Paced like the model rigs, since `extract_ui_material_nodes` skips a hidden or empty node.
+fn spawn_ui_lane_rig<M: UiMaterial>(commands: &mut Commands, mat: Handle<M>, count: &mut usize) {
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(-4096.0),
+            top: Val::Px(-4096.0),
+            width: Val::Px(1.0),
+            height: Val::Px(1.0),
+            ..default()
+        },
+        MaterialNode(mat),
+        WarmRig,
+        Visibility::Hidden,
+    ));
     *count += 1;
 }
 

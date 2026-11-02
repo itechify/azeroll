@@ -6,6 +6,7 @@
 #   WEB_BACKEND=webgl2 scripts/web-build.sh   # WebGL2: every browser, glue screens only
 #   WEB_PROFILE=ship scripts/web-build.sh    # compare fat LTO against the release default
 #   WEB_DEBUG=1 scripts/web-build.sh          # keep the wasm name section (symbolic stack traces)
+#   CARGO_TARGET_DIR=target-wasm scripts/web-build.sh   # build beside a native `target/` without sharing its lock
 #
 # Then serve web/dist with wenilla-host:
 #   cargo run --release -p wenilla-host -- --www web/dist --data /path/to/WoW/Data
@@ -21,7 +22,7 @@ case "${PROFILE}" in
   release|ship) ;;
   *) echo "WEB_PROFILE must be release or ship" >&2; exit 1 ;;
 esac
-WASM="target/wasm32-unknown-unknown/${PROFILE}/wenilla.wasm"
+WASM="${CARGO_TARGET_DIR:-target}/wasm32-unknown-unknown/${PROFILE}/wenilla.wasm"
 export WASI_SDK="${WASI_SDK:-$(pwd)/tools/wasi-sdk}"
 
 command -v wasm-bindgen >/dev/null || { echo "wasm-bindgen not found — run scripts/web-setup.sh" >&2; exit 1; }

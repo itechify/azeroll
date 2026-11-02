@@ -182,7 +182,7 @@ pub(crate) fn drive_display_facing(
         ),
     >,
     self_q: Query<Entity, With<SelfPlayer>>,
-    mut transforms: Query<&mut Transform>,
+    mut transforms: Query<&mut Transform, Without<crate::entities::Carried>>,
     mut facings: Query<&mut DisplayFacing>,
     // A remote player's latch belongs to the remote facing interp; sweeping it here would fight it.
     latched: Query<Entity, (With<FacingStep>, Without<RemoteMotion>)>,

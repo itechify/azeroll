@@ -2,6 +2,9 @@
 //! unit's display resolves to its M2 through the creature chain, a player's body included, a
 //! GameObject's to its model, and anything else draws as a cube.
 
+mod carried;
+pub(crate) use carried::Carried;
+
 use std::collections::HashMap;
 
 use benilla_assets::{M2Model, WmoModel};

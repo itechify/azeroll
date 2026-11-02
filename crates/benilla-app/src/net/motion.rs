@@ -73,7 +73,7 @@ pub(super) fn pose_transform(position: [f32; 3], rotation: Quat) -> Transform {
 /// (`0x601020`).
 pub(super) fn write_pose(
     commands: &mut Commands,
-    transforms: &mut Query<&mut Transform>,
+    transforms: &mut Query<&mut Transform, Without<crate::entities::Carried>>,
     e: Entity,
     position: [f32; 3],
     rotation: Quat,

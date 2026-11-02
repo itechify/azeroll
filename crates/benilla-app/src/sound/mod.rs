@@ -29,6 +29,7 @@ mod meter;
 mod missile;
 mod mix_tap;
 mod mixer;
+mod mode_music;
 mod money;
 mod mount;
 mod net;
@@ -62,6 +63,7 @@ pub(crate) use greeting::NpcGreetingRequest;
 pub(crate) use kit::SoundKits;
 pub(crate) use message::MessageSounds;
 pub(crate) use mixer::Mixer;
+pub(crate) use mode_music::{ModeMusic, ModeTrack};
 pub(crate) use ui::{AutoEquipSound, LootPickupSound};
 pub(crate) use zone::ExplorationSounds;
 
@@ -221,10 +223,13 @@ fn apply_focus_gate(
 fn feed_music_suppression(
     mut config: ResMut<SoundConfig>,
     cinematic: Option<Res<crate::cinematic::Cinematic>>,
+    mode_music: Res<ModeMusic>,
 ) {
-    let playing = cinematic
-        .as_deref()
-        .is_some_and(crate::cinematic::Cinematic::is_playing);
+    // A mode's own music (Azeroll's) holds the zone music down by the same flag.
+    let playing = mode_music.active()
+        || cinematic
+            .as_deref()
+            .is_some_and(crate::cinematic::Cinematic::is_playing);
     if config.music_suppressed != playing {
         config.music_suppressed = playing;
     }
@@ -419,6 +424,7 @@ impl Plugin for SoundPlugin {
         kit::plugin(app);
         liquid_loop::plugin(app);
         zone::plugin(app);
+        mode_music::plugin(app);
         cinematic::plugin(app);
         gameobject::plugin(app);
         anim_events::plugin(app);

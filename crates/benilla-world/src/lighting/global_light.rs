@@ -39,6 +39,7 @@ use crate::view::WorldCamera;
 struct LightStd430 {
     rows: [[f32; 4]; LIGHT_HEADER_ROWS],
     points: [[f32; 4]; 2 * MAX_POINT_LIGHTS],
+    cutout: [[f32; 4]; 2],
 }
 
 /// Header row count of the layout above (rows 0..=20), which every light blob sizes against.
@@ -125,6 +126,7 @@ impl Default for WowLightData {
         Self(LightStd430 {
             rows: [[0.0; 4]; 21],
             points: [[0.0; 4]; 2 * MAX_POINT_LIGHTS],
+            cutout: [[0.0; 4]; 2],
         })
     }
 }
@@ -136,7 +138,8 @@ pub struct SharedLightBuffer(pub Buffer);
 
 /// Registers the light pack, the probe publish, their extracts and the render-world uploads.
 pub(super) fn register(app: &mut App) {
-    app.init_resource::<WowLightData>()
+    app.init_resource::<FoliageCutout>()
+        .init_resource::<WowLightData>()
         .init_resource::<super::prop_probes::PropProbeExtract>()
         .add_plugins(ExtractResourcePlugin::<WowLightData>::default())
         .add_plugins(ExtractResourcePlugin::<SharedLightBuffer>::default())
@@ -182,15 +185,16 @@ pub fn light_blob_bytes() -> u64 {
         + crate::rig_palette::palette_regions_bytes()
 }
 
-/// The per-frame prefix's size, which is also the probe region's offset.
+/// The per-frame prefix (including the optional two-row foliage window), also the probe offset.
 pub(super) fn per_frame_blob_bytes() -> u64 {
     std::mem::size_of::<LightStd430>() as u64
 }
 
 /// Packs the resolved [`WowLighting`], the fog toggle, the farclip and the nearest point lights
 /// into the std430 blob.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn build_light_data(
+    cutout: Res<FoliageCutout>,
     light: Res<WowLighting>,
     debug: Res<DebugState>,
     view: Res<ViewDistance>,
@@ -212,6 +216,7 @@ fn build_light_data(
     // Built in a scratch copy and written through `ResMut` only when a row moved: the extract
     // clones this 8.5 KB blob every frame it reads as changed.
     let mut fresh = data.0;
+    fresh.cutout = [cutout.screen.to_array(), cutout.limits.to_array()];
     fresh.rows = [[0.0; 4]; LIGHT_HEADER_ROWS];
     let rows = &mut fresh.rows;
     rows[3] = [l.spec[0], l.spec[1], l.spec[2], 20.0]; // 3 light_spec (w=terrain shininess 20)
@@ -545,4 +550,13 @@ mod tests {
             );
         }
     }
+}
+
+/// Optional screen-space foliage window. All-zero defaults leave ordinary clients unchanged.
+#[derive(Resource, Default)]
+pub struct FoliageCutout {
+    /// Physical viewport pixels: centre x/y, outer radius, reserved.
+    pub screen: Vec4,
+    /// Maximum planar eye depth, minimum world Y, enabled, reserved.
+    pub limits: Vec4,
 }

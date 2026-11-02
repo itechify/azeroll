@@ -74,6 +74,11 @@ impl<Error> StreamingSoundData<Error> {
         Self(self.0.volume(volume), self.1)
     }
 
+    /// Loop the whole sound.
+    pub(crate) fn loop_region(self, region: impl kira::sound::IntoOptionalRegion) -> Self {
+        Self(self.0.loop_region(region), self.1)
+    }
+
     /// Wear the streaming name over PCM that is already decoded. [`stream_from_bytes`] needs
     /// `from_cursor` because it starts from compressed bytes; [`super::web_load`] hands the decode
     /// to the browser and arrives with the samples, so it needs this instead.
@@ -644,6 +649,11 @@ fn freeverb_projection(p: &SoundProvider) -> (f64, f64, Decibels) {
 /// Decode audio-file bytes (WAV incl. IMA-ADPCM, MP3) into a ready-to-play SFX sound.
 pub(crate) fn sfx_from_bytes(bytes: Vec<u8>) -> Result<StaticSoundData> {
     StaticSoundData::from_cursor(std::io::Cursor::new(bytes)).context("decoding sfx")
+}
+
+/// `data` looping over its whole length; both targets' streaming types take the same call.
+pub(crate) fn looped(data: StreamingSoundData<FromFileError>) -> StreamingSoundData<FromFileError> {
+    data.loop_region(..)
 }
 
 /// Wrap compressed audio bytes for decode-streaming ([`stream_from_source`]).

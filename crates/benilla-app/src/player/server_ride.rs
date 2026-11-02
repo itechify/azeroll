@@ -78,7 +78,7 @@ pub(super) fn drive_self_ride(
             Option<&mut MovementState>,
             Option<&mut BodyTwist>,
         ),
-        With<Embodied>,
+        (With<Embodied>, Without<crate::entities::Carried>),
     >,
 ) {
     // Only while we hold control; a free-fly detach abandons the ride (the server still ends it).

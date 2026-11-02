@@ -310,16 +310,19 @@ fn create_spline_enabled() -> bool {
 #[allow(clippy::type_complexity)] // one Bevy system's full input set
 pub(in crate::net) fn sample_splines(
     mut commands: Commands,
-    mut q: Query<(
-        Entity,
-        &Spline,
-        &mut Transform,
-        Has<CreatureSwimming>,
-        // For the `spl` trace only; the sampler never gates on it.
-        Option<&super::super::Guid>,
-        // A deck path's destination; `transport::compose_riders` carries it to the world later.
-        Option<&mut crate::transport::TransportRider>,
-    )>,
+    mut q: Query<
+        (
+            Entity,
+            &Spline,
+            &mut Transform,
+            Has<CreatureSwimming>,
+            // For the `spl` trace only; the sampler never gates on it.
+            Option<&super::super::Guid>,
+            // A deck path's destination; `transport::compose_riders` carries it to the world later.
+            Option<&mut crate::transport::TransportRider>,
+        ),
+        Without<crate::entities::Carried>,
+    >,
     mut trace_next: Local<f32>,
     time: Res<Time>,
 ) {
@@ -482,19 +485,22 @@ pub(in crate::net) fn ground_clamp_creatures(
     // extents are not built.
     capsule: Res<crate::player::PlayerCapsule>,
     mut commands: Commands,
-    mut q: Query<(
-        Entity,
-        &NetEntity,
-        Option<&Spline>,
-        &mut Transform,
-        Option<&mut GroundClamped>,
-        Has<CreatureSwimming>,
-        // HOVER and WATERWALKING both move the answer.
-        Option<&crate::net::UnitMoveModes>,
-        // [`ground_derived`]'s other Z authorities: the controller and the relay's dead-reckoning.
-        Has<crate::net::Embodied>,
-        Has<crate::net::RemoteMotion>,
-    )>,
+    mut q: Query<
+        (
+            Entity,
+            &NetEntity,
+            Option<&Spline>,
+            &mut Transform,
+            Option<&mut GroundClamped>,
+            Has<CreatureSwimming>,
+            // HOVER and WATERWALKING both move the answer.
+            Option<&crate::net::UnitMoveModes>,
+            // [`ground_derived`]'s other Z authorities: the controller and the relay's dead-reckoning.
+            Has<crate::net::Embodied>,
+            Has<crate::net::RemoteMotion>,
+        ),
+        Without<crate::entities::Carried>,
+    >,
 ) {
     let cost = clamp_cost_enabled();
     let legacy = clamp_seat_disabled();

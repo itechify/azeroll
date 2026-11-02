@@ -29,6 +29,8 @@ struct WowLight {
     wmo_fog_params: vec4<f32>,
     point_count: vec4<f32>,
     points: array<vec4<f32>, 512>,
+    cutout_screen: vec4<f32>,
+    cutout_limits: vec4<f32>,
     // lighting::prop_probes: 8192 slots of 7 rows; the buffer's later regions are not mirrored.
     prop_probes: array<vec4<f32>, 57344>,
 }
@@ -177,8 +179,23 @@ fn vertex(v: GxVertex) -> GxVsOut {
     return out;
 }
 
+
+// Fork carry: stable screen-door edge, depth and contact-height protected; disabled by default.
+fn foliage_window(pixel: vec2<f32>, world: vec3<f32>) -> bool {
+    let c = wow_light.cutout_screen;
+    let gate = wow_light.cutout_limits;
+    let depth = -(view.view_from_world * vec4<f32>(world, 1.0)).z;
+    let distance = length(pixel - c.xy) / max(c.z, 1.0);
+    let coverage = 1.0 - smoothstep(0.72, 1.0, distance);
+    let noise = fract(52.9829189 * fract(dot(floor(pixel), vec2<f32>(0.06711056, 0.00583715))));
+    return gate.z > 0.5 && depth < gate.x && world.y > gate.y && coverage > noise;
+}
+
 @fragment
 fn fragment(in: GxVsOut) -> @location(0) vec4<f32> {
+    if ((in.word & 1073741824u) != 0u) {
+        if (foliage_window(in.position.xy, in.world_position.xyz)) { discard; }
+    }
     // The hard farclip wall: per-pixel planar eye-Z, the same plane as the entity path.
     let eye_z = -(view.view_from_world * vec4<f32>(in.world_position.xyz, 1.0)).z;
     if (wow_light.fog_params.w > 0.0 && eye_z > wow_light.fog_params.w) {

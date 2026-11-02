@@ -1,0 +1,371 @@
+# Spawn/waypoint data derived from CMaNGOS classic-db (GPL-3.0).
+# Provenance and exact source revisions: docs/azeroll/data/goldshire-npcs.json.
+# The two road patrols are authored; the tannery formation uses VMaNGOS spacing.
+#
+# Optional per-NPC fields (ours, not from the databases; see npcs.rs for what they do):
+#   carry   = "mug" | "stein" | "bread" | "apple" | "hammer" | "cleaver" | "bottle" | "jug"
+#             what the NPC drops, as a small collectible, the first time it bolts.
+#   partner = "<another NPC's name>"   they flee holding hands, and mourn if the other is rolled up.
+#   quirk   = "polish"  never reacts until rolled up (the innkeeper keeps polishing his mug)
+#           | "sleeper" sleeps through everything until the ball is on top of them
+#           | "brave"   a guard who charges a ball that can only dislodge him, bounces off, then flees
+
+[[npc]]
+name = "Erma"
+carry = "apple"
+scene = "inn and yard"
+role = "villager"
+activity = "chat"
+display = 9257
+at = [-9465.95, 48.14, 56.97]
+yaw = 1.466
+indoors = false
+
+[[npc]]
+name = "Priestess Josetta"
+scene = "inn and yard"
+role = "villager"
+activity = "chat"
+display = 1295
+at = [-9460.75, 33.13, 63.9]
+yaw = 4.363
+indoors = true
+
+[[npc]]
+name = "William Pestle"
+carry = "mug"
+scene = "inn and yard"
+role = "villager"
+activity = "chat"
+display = 5038
+at = [-9460.3, 31.94, 57.05]
+yaw = 2.985
+indoors = true
+
+[[npc]]
+name = "Michelle Belle"
+scene = "inn and yard"
+role = "villager"
+activity = "chat"
+display = 1296
+at = [-9456.81, 29.36, 63.9]
+yaw = 2.967
+indoors = true
+
+[[npc]]
+name = "Zaldimar Wefhellt"
+scene = "inn and yard"
+role = "villager"
+activity = "chat"
+display = 1294
+at = [-9471.67, 34.45, 63.9]
+yaw = 4.625
+indoors = true
+
+[[npc]]
+name = "Kira Songshine"
+carry = "bread"
+scene = "market"
+role = "villager"
+activity = "chat"
+display = 3234
+at = [-9468.37, 61.66, 56.07]
+yaw = 0.346
+indoors = false
+path = [[-9454.59, 66.63, 56.2], [-9415.6, 86.55, 56.99], [-9402.72, 93.9, 58.41], [-9383.63, 105.09, 60.04], [-9362.59, 111.67, 61.56], [-9337.43, 124.47, 63.72], [-9362.59, 111.67, 61.56], [-9383.63, 105.09, 60.04], [-9402.72, 93.9, 58.41], [-9415.6, 86.55, 56.99], [-9454.59, 66.63, 56.2]]
+
+[[npc]]
+name = "Melika Isenstrider"
+scene = "inn and yard"
+role = "villager"
+activity = "chat"
+display = 5527
+at = [-9471.94, 27.41, 56.42]
+yaw = 5.585
+indoors = true
+
+[[npc]]
+name = "Innkeeper Farley"
+quirk = "polish"
+scene = "inn and yard"
+role = "villager"
+activity = "chat"
+display = 1291
+at = [-9462.66, 16.19, 57.05]
+yaw = 3.037
+indoors = true
+
+[[npc]]
+name = "Stormwind Guard"
+scene = "guard post"
+role = "guard"
+activity = "chat"
+display = 3258
+at = [-9455.43, 73.73, 56.95]
+yaw = 3.142
+indoors = false
+
+[[npc]]
+name = "Marshal Dughan"
+quirk = "brave"
+scene = "guard post"
+role = "guard"
+activity = "chat"
+display = 1985
+at = [-9465.52, 74.01, 56.78]
+yaw = 4.59
+indoors = false
+
+[[npc]]
+name = "Keryn Sylvius"
+scene = "inn and yard"
+role = "villager"
+activity = "chat"
+display = 1297
+at = [-9465.79, 12.65, 63.9]
+yaw = 1.1
+indoors = true
+
+[[npc]]
+name = "Brog Hamfist"
+carry = "bread"
+scene = "inn and yard"
+role = "villager"
+activity = "eat"
+display = 1292
+at = [-9465.29, 9.63, 57.15]
+yaw = 1.449
+indoors = true
+
+[[npc]]
+name = "Barkeep Dobbins"
+carry = "mug"
+scene = "inn and yard"
+role = "villager"
+activity = "eat"
+display = 3266
+at = [-9459.98, 8.41, 57.15]
+yaw = 1.466
+indoors = true
+
+[[npc]]
+name = "Stormwind Guard"
+scene = "guard post"
+role = "guard"
+activity = "chat"
+display = 3257
+at = [-9481.31, 74.42, 56.55]
+yaw = 3.069
+indoors = false
+
+[[npc]]
+name = "Smith Argus"
+carry = "hammer"
+scene = "smithy"
+role = "villager"
+activity = "work"
+display = 1288
+at = [-9456.65, 87.86, 58.43]
+yaw = 2.409
+indoors = true
+
+[[npc]]
+name = "Andrew Krighton"
+carry = "hammer"
+scene = "smithy"
+role = "villager"
+activity = "work"
+display = 3340
+at = [-9464.08, 87.92, 58.34]
+yaw = 0.001
+indoors = true
+path = [[-9464.08, 87.92, 58.34], [-9464.31, 89.22, 58.34], [-9464.31, 89.22, 58.34]]
+
+[[npc]]
+name = "Toddrick"
+carry = "cleaver"
+scene = "inn and yard"
+role = "villager"
+activity = "work"
+display = 3236
+at = [-9466.42, 0.06, 57.03]
+yaw = 6.126
+indoors = true
+
+[[npc]]
+name = "Remy \"Two Times\""
+quirk = "sleeper"
+carry = "bottle"
+scene = "market"
+role = "villager"
+activity = "sleep"
+display = 3254
+at = [-9496.32, 72.83, 56.6]
+yaw = 6.231
+indoors = false
+
+[[npc]]
+name = "Tomas"
+carry = "bread"
+scene = "inn and yard"
+role = "villager"
+activity = "work"
+display = 1293
+at = [-9466.99, -4.53, 57.03]
+yaw = 1.641
+indoors = true
+
+[[npc]]
+name = "Bo"
+carry = "apple"
+scene = "children"
+role = "kid"
+activity = "chat"
+display = 338
+at = [-9460.58, 94.23, 58.35]
+yaw = 3.129
+indoors = false
+path = [[-9460.58, 94.23, 58.35], [-9460.58, 94.23, 58.35], [-9465.78, 113.6, 57.92], [-9457.16, 126.09, 59.11], [-9444.9, 135.83, 58.48], [-9435.16, 135.16, 58.41], [-9425.55, 129.19, 59.73], [-9425.55, 129.19, 59.73], [-9435.16, 135.16, 58.41], [-9444.9, 135.83, 58.48], [-9457.16, 126.09, 59.11], [-9465.78, 113.6, 57.92]]
+
+[[npc]]
+name = "Corina Steele"
+carry = "hammer"
+partner = "Kurran Steele"
+scene = "smithy"
+role = "villager"
+activity = "work"
+display = 1287
+at = [-9464.87, 93.99, 58.53]
+yaw = 0
+indoors = true
+
+[[npc]]
+name = "Tharynn Bouden"
+carry = "jug"
+scene = "market"
+role = "villager"
+activity = "chat"
+display = 1298
+at = [-9494.13, 83.91, 56.66]
+yaw = 5.969
+indoors = false
+
+[[npc]]
+name = "Kurran Steele"
+partner = "Corina Steele"
+scene = "smithy"
+role = "villager"
+activity = "chat"
+display = 1289
+at = [-9457.64, 99.69, 58.43]
+yaw = 4.119
+indoors = true
+
+[[npc]]
+name = "Lyria Du Lac"
+partner = "Brother Wilhelm"
+scene = "smithy"
+role = "villager"
+activity = "chat"
+display = 1300
+at = [-9461.85, 109.35, 57.88]
+yaw = 2.653
+indoors = false
+
+[[npc]]
+name = "Brother Wilhelm"
+partner = "Lyria Du Lac"
+carry = "mug"
+scene = "smithy"
+role = "villager"
+activity = "chat"
+display = 1299
+at = [-9468.14, 108.98, 57.66]
+yaw = 1.798
+indoors = false
+
+[[npc]]
+name = "Mark"
+partner = "Joshua"
+scene = "children"
+role = "kid"
+activity = "chat"
+display = 338
+at = [-9424.66, 129.06, 59.8]
+yaw = 2.332
+indoors = false
+
+[[npc]]
+name = "Joshua"
+partner = "Mark"
+scene = "children"
+role = "kid"
+activity = "chat"
+display = 221
+at = [-9422.29, 129.1, 59.71]
+yaw = 2.226
+indoors = false
+
+[[npc]]
+name = "Cameron"
+partner = "John"
+scene = "children"
+role = "kid"
+activity = "chat"
+display = 262
+at = [-9373, -66.34, 69.2]
+yaw = 1.031
+indoors = false
+
+[[npc]]
+name = "John"
+partner = "Cameron"
+scene = "children"
+role = "kid"
+activity = "chat"
+display = 338
+at = [-9375.01, -64.15, 69.2]
+yaw = 1.074
+indoors = false
+
+[[npc]]
+name = "Dana"
+partner = "Lisa"
+scene = "children"
+role = "kid"
+activity = "chat"
+display = 257
+at = [-9371.5, -63.84, 69.2]
+yaw = 1.072
+indoors = false
+
+[[npc]]
+name = "Lisa"
+partner = "Dana"
+scene = "children"
+role = "kid"
+activity = "chat"
+display = 252
+at = [-9375.8, -67.62, 69.2]
+yaw = 0.966
+indoors = false
+
+[[npc]]
+name = "Road Patrol 1"
+scene = "road patrol (authored)"
+role = "guard"
+activity = "chat"
+display = 3258
+at = [-9448, 70, 57.0]
+yaw = 0.0
+path = [[-9454.6,66.6,57.0],[-9337.4,124.5,63.0]]
+
+[[npc]]
+name = "Road Patrol 2"
+scene = "road patrol (authored)"
+role = "guard"
+activity = "chat"
+display = 3257
+at = [-9443, 72, 57.0]
+yaw = 0.0
+path = [[-9454.6,66.6,57.0],[-9337.4,124.5,63.0]]

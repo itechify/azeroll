@@ -178,7 +178,11 @@ pub(super) type BodyQuery<'w, 's> = Query<
         // The raw `OBJECT_FIELD_SCALE_X` for the pivot height, not the transform's 2 s-eased scale.
         Option<&'static crate::net::NetEntity>,
     ),
-    (With<Embodied>, Without<FlyCam>),
+    (
+        With<Embodied>,
+        Without<FlyCam>,
+        Without<crate::entities::Carried>,
+    ),
 >;
 
 /// The armed transports, for the deck carry ([`ride`]). `ColliderAabb` is for the ride trace:

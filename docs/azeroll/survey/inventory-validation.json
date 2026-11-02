@@ -1,0 +1,20 @@
+{
+  "adt_tiles_checked": [
+    "World\\Maps\\Azeroth\\Azeroth_30_48.adt",
+    "World\\Maps\\Azeroth\\Azeroth_30_49.adt",
+    "World\\Maps\\Azeroth\\Azeroth_30_50.adt",
+    "World\\Maps\\Azeroth\\Azeroth_31_48.adt",
+    "World\\Maps\\Azeroth\\Azeroth_31_49.adt",
+    "World\\Maps\\Azeroth\\Azeroth_31_50.adt",
+    "World\\Maps\\Azeroth\\Azeroth_32_48.adt",
+    "World\\Maps\\Azeroth\\Azeroth_32_49.adt",
+    "World\\Maps\\Azeroth\\Azeroth_32_50.adt",
+    "World\\Maps\\Azeroth\\Azeroth_33_48.adt",
+    "World\\Maps\\Azeroth\\Azeroth_33_49.adt",
+    "World\\Maps\\Azeroth\\Azeroth_33_50.adt"
+  ],
+  "independent_count": 4355,
+  "survey_count": 4355,
+  "missing_from_survey": [],
+  "extra_in_survey": []
+}

@@ -95,6 +95,8 @@ mod screenshot;
 mod script_calls;
 mod shaders;
 
+/// Azeroll: the rolling, everything-sticks mode the `azeroll` launcher boots.
+mod azeroll;
 mod game_tip;
 mod name_persist;
 mod opaque2d;
@@ -232,6 +234,22 @@ pub fn run_survivors(build: BuildId) -> AppExit {
     launch(build, None)
 }
 
+/// Azeroll: the client booted server-less into Elwynn Forest with a rolling ball that sticks to
+/// everything smaller than itself ([`azeroll`]), called by the `azeroll` launcher.
+pub fn run_azeroll(build: BuildId) -> AppExit {
+    azeroll::ACTIVE.store(true, std::sync::atomic::Ordering::Relaxed);
+    launch(build, None)
+}
+
+/// The browser launcher's pick: Azeroll, unless the page asks for Survivors (`?survivors=1`).
+pub fn run_web(build: BuildId) -> AppExit {
+    if webenv::var("WOW_SURVIVORS").is_some() {
+        run_survivors(build)
+    } else {
+        run_azeroll(build)
+    }
+}
+
 /// What a crate on top of benilla adds to the built app ([`run_with`]).
 type Extension<'a> = Box<dyn FnOnce(&mut App) + 'a>;
 
@@ -302,10 +320,16 @@ fn launch(build: BuildId, extend: Option<Extension<'_>>) -> AppExit {
     // NPCs stream in) and exits.
     let capturing = run_mode::scenario_active();
     // Survivors runs server-less too, on Kalimdor; `world_map` reads the map at `Startup`.
-    let survivors = survivors::active();
+    // Azeroll wins a conflict: one mode controller per app.
+    let azeroll = azeroll::active();
+    let survivors = !azeroll && survivors::active();
     if survivors {
         benilla_world::world_map::set_start_map(1);
     }
+    if azeroll {
+        benilla_world::world_map::set_start_map(azeroll::level::MAP);
+    }
+    let server_less = survivors || azeroll;
     // Every instrumented run, captures and live probes, opens in the background so it never takes
     // over a person's screen; `WOW_BG` overrides.
     let background = benilla_world::bgwin::background_run();
@@ -343,6 +367,8 @@ fn launch(build: BuildId, extend: Option<Extension<'_>>) -> AppExit {
     app.add_plugins(benilla_world::boot::tuned_default_plugins(Window {
         title: if survivors {
             "Warcraft Survivors"
+        } else if azeroll {
+            "Azeroll"
         } else {
             "benilla"
         }
@@ -433,8 +459,8 @@ fn launch(build: BuildId, extend: Option<Extension<'_>>) -> AppExit {
     // The game as one group on top of the engine; `game_plugins.rs` has its members, its
     // load-bearing ordering edges and the test that builds it headless.
     .add_plugins(game_plugins::GamePlugins {
-        connect: !capturing && !survivors,
-        start: if survivors {
+        connect: !capturing && !server_less,
+        start: if server_less {
             char_select::ClientState::InWorld
         } else {
             run_mode::start_state()
@@ -442,6 +468,9 @@ fn launch(build: BuildId, extend: Option<Extension<'_>>) -> AppExit {
     });
     if survivors {
         app.add_plugins(survivors::SurvivorsPlugin);
+    }
+    if azeroll {
+        app.add_plugins(azeroll::AzerollPlugin);
     }
 
     app.add_plugins(webbridge::WebBridgePlugin);

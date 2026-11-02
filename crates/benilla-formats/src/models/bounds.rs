@@ -36,6 +36,10 @@ pub struct M2Bounds {
     /// and returns `out+0x20 − out+0x14`. The overhead name instead uses `0x608640`, the live posed
     /// attachment, which bobs. The header box's Z for a model with no sequences.
     pub stand_box_z: f32,
+    /// The Stand box's full `(dx, dy, dz)` extent (the header box for a model with no sequences),
+    /// model-local yards: what a creature occupies standing, unlike the header sphere and box,
+    /// which cover every animation (a rat's sphere is 1.3 yd).
+    pub stand_extent: [f32; 3],
     /// How far the camera pivot drops while swimming: Stand's box `max.z` less Swim's, floored at
     /// zero, and `0.0` without a Swim sequence. The reference adds the neck height
     /// (`attach17.z + 0.0972222`, `0x808ab0`) to three presets, `cam+0x11c`/`+0x120`/`+0x124`
@@ -163,6 +167,7 @@ pub fn parse_m2_bounds(bytes: &[u8]) -> Result<M2Bounds> {
         ring_footprint,
         pivot_z: model.pivot_attach_z,
         stand_box_z: rz.max(0.0),
+        stand_extent: [rx.abs(), ry.abs(), rz.abs()],
         swim_pivot_drop: swim_pivot_drop(bytes),
     })
 }

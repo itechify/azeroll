@@ -1,0 +1,24 @@
+[package]
+name = "azeroll"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Azeroll: the benilla client booted server-less into Elwynn Forest with a ball that rolls up everything smaller than itself"
+
+[lints]
+workspace = true
+
+[features]
+default = ["dev"]
+dev = ["benilla-app/dev"]
+
+[dependencies]
+benilla-app = { path = "../benilla-app", default-features = false }
+
+[build-dependencies]
+benilla-buildstamp = { path = "../benilla-buildstamp" }
+
+[[bin]]
+name = "azeroll"
+path = "src/main.rs"
+test = false

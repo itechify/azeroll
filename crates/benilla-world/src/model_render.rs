@@ -178,6 +178,11 @@ pub fn model_material(
     }
     // An additive batch is a (ONE, ONE) add of gamma-space premultiplied colour: the shader and
     // `specialize` must key on the same `clutter_fade.z` bit 2.
+    let foliage = !is_wmo
+        && blend == ModelBlend::AlphaTest
+        && texture
+            .as_ref()
+            .is_some_and(benilla_assets::materials::foliage_texture);
     let source_cutout = blend == ModelBlend::AlphaTest && !alphatest_disabled();
     let alpha_mode = if is_additive || fade_variant {
         // A fade twin always blends (`0x70c1fd`); its source blend only sets the cutout marker.
@@ -241,9 +246,10 @@ pub fn model_material(
                     // (`0x70baf0`), 7 Mod (DST_COLOR, ZERO) and 8 Mod2x (DST_COLOR, SRC_COLOR),
                     // exact because the framebuffer holds gamma as in the reference, 10 twin
                     // cutout (the source alpha-tests: 224/255 on the unfaded alpha; an Opaque
-                    // source has no test, `0x70c237`), 12 env map, 13 sky depth.
+                    // source has no test, `0x70c237`), 12 env map, 13 sky depth, 14 foliage window.
                     f32::from(
                         u16::from(no_depth_write)
+                            | (u16::from(foliage) << 14)
                             | (u16::from(no_depth_test) << 1)
                             | (u16::from(is_additive) << 2)
                             | (u16::from(

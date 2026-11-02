@@ -5,3 +5,5 @@
 play = "run --profile play -p benilla"
 # `cargo survivors`: Warcraft Survivors, server-less, on the same profile.
 survivors = "run --profile play -p warcraft-survivors"
+# `cargo azeroll`: Azeroll, server-less, in Elwynn Forest.
+azeroll = "run --profile play -p azeroll"

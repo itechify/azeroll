@@ -199,7 +199,15 @@ fn bake_cell(items: &[GxItem], meshes: &mut Assets<Mesh>) -> render::GxCellDraw 
         let base = u32::try_from(positions64.len()).expect("gx cell under u32 vertices");
         // Low 16 bits: the item index, which the render side's record table maps to a layer.
         let has_vc = sub.vertex_colors.len() == sub.positions.len();
+        // Fork carry: only alpha-tested foliage gets the shared screen-space window (bit 30).
+        let foliage = item.cutout
+            && item.wmo.is_none()
+            && item
+                ._texture_handle
+                .as_ref()
+                .is_some_and(benilla_assets::materials::foliage_texture);
         let word_flags = u32::try_from(item_idx).expect("gx cell under u16 items")
+            | (u32::from(foliage) << 30)
             | (u32::from(item.wrap_x) * WORD_WRAP_X)
             | (u32::from(item.wrap_y) * WORD_WRAP_Y)
             | (u32::from(item.unlit) * WORD_UNLIT)

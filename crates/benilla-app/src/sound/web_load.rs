@@ -168,6 +168,46 @@ pub(super) fn begin(
     }
 }
 
+/// Decode bytes already in the binary (a mode's embedded music) through the same browser path as a
+/// fetched file: `decodeAudioData` off the main thread, wasm's own decoder as the fallback. Loops
+/// are the caller's (`mixer::looped`). Nothing is fetched, so there is no request to abort.
+pub(super) fn begin_bytes(bytes: Vec<u8>, path: String) -> Pending {
+    let slot: Arc<Mutex<Option<Result<StaticSoundData, String>>>> = Arc::new(Mutex::new(None));
+    let write = Arc::downgrade(&slot);
+    let request_id = NEXT_REQUEST.with(|next| {
+        let id = next.get();
+        next.set(id.wrapping_add(1));
+        id
+    });
+    wasm_bindgen_futures::spawn_local(async move {
+        let out = decode_bytes(bytes).await;
+        if let Some(write) = write.upgrade() {
+            *write.lock().unwrap_or_else(|p| p.into_inner()) = Some(out);
+        }
+    });
+    Pending {
+        kit_id: 0,
+        kit_vol: 1.0,
+        path,
+        fade_ms: 0,
+        slot,
+        request_id,
+    }
+}
+
+async fn decode_bytes(bytes: Vec<u8>) -> Result<StaticSoundData, String> {
+    let signal = web_sys::AbortController::new().map_err(js_err)?.signal();
+    // `decodeAudioData` detaches its buffer, so it gets a copy and `bytes` stays for the fallback.
+    let buf = js_sys::Uint8Array::from(bytes.as_slice()).buffer();
+    match decode_in_browser(&buf, &signal).await {
+        Ok(data) => Ok(data),
+        Err(e) => {
+            debug!("web_load: decodeAudioData refused ({e}) — decoding in wasm instead");
+            super::mixer::sfx_from_bytes(bytes).map_err(|e| format!("{e:#}"))
+        }
+    }
+}
+
 /// `fetch` the bytes, then decode them — in the browser where possible, in wasm where not.
 async fn fetch_and_decode(
     url: &str,

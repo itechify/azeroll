@@ -77,6 +77,8 @@ struct WowLight {
     // in Bevy's clusterables, which the view layout gives the fragment stage only.
     point_count: vec4<f32>,
     points: array<vec4<f32>, 512>,
+    cutout_screen: vec4<f32>,
+    cutout_limits: vec4<f32>,
     // The interior-prop SH probes, 7 rows per slot (`MAX_PROP_PROBES` = 8192 slots). Only this
     // shader declares this tail; the other shaders bind the same buffer by its prefix.
     prop_probes: array<vec4<f32>, 57344>,
@@ -416,8 +418,23 @@ fn vertex(vertex: WowVertex) -> WowVsOut {
     return out;
 }
 
+
+// Fork carry: stable screen-door edge, depth and contact-height protected; disabled by default.
+fn foliage_window(pixel: vec2<f32>, world: vec3<f32>) -> bool {
+    let c = wow_light.cutout_screen;
+    let gate = wow_light.cutout_limits;
+    let depth = -(view.view_from_world * vec4<f32>(world, 1.0)).z;
+    let distance = length(pixel - c.xy) / max(c.z, 1.0);
+    let coverage = 1.0 - smoothstep(0.72, 1.0, distance);
+    let noise = fract(52.9829189 * fract(dot(floor(pixel), vec2<f32>(0.06711056, 0.00583715))));
+    return gate.z > 0.5 && depth < gate.x && world.y > gate.y && coverage > noise;
+}
+
 @fragment
 fn fragment(in: WowVsOut, @builtin(front_facing) is_front: bool) -> WowFragOut {
+    if ((u32(m.clutter_fade.z) & 16384u) != 0u && m.anim_slots.w < 0.5) {
+        if (foliage_window(in.position.xy, in.world_position.xyz)) { discard; }
+    }
     // The UI model tile's cell clip: the reference gives each `<Model>` pane its widget rect as the
     // viewport; our panes share an atlas, so the tile passes its cell as a mat-anim row
     // (`anim_slots.w`, `[min.x, min.y, max.x, max.y]` in atlas texels) and this is the scissor.

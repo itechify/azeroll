@@ -943,6 +943,7 @@ mod retire_tests {
     fn placement(model: ModelHandle, doodads: Vec<WmoDoodadInst>) -> Placement {
         Placement {
             model,
+            claimed: false,
             transform: Transform::IDENTITY,
             entities: Vec::new(),
             spawned: false,

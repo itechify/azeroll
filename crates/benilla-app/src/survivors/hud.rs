@@ -75,9 +75,9 @@ pub(super) struct LevelUpSub;
 /// A radial cooldown sweep over one ability icon: `sweep` is the remaining fraction
 /// (1.0 = just cast, 0.0 = ready), drawn by `ui_sweep.wgsl`.
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
-pub(super) struct SweepUiMaterial {
+pub(crate) struct SweepUiMaterial {
     #[uniform(0)]
-    pub(super) sweep: f32,
+    pub(crate) sweep: f32,
 }
 
 impl UiMaterial for SweepUiMaterial {

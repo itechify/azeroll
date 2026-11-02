@@ -73,7 +73,10 @@ pub(super) fn conform_units(
     time: Res<Time>,
     spatial: SpatialQuery,
     decals: benilla_world::decal::WorldDecal,
-    units: Query<(&Transform, Has<benilla_world::rig_anim::AnimParked>), Without<ConformNode>>,
+    units: Query<
+        (&Transform, Has<benilla_world::rig_anim::AnimParked>),
+        (Without<ConformNode>, Without<super::Carried>),
+    >,
     mut nodes: Query<(&ConformNode, &mut Transform)>,
     mut ups: Local<EntityHashMap<Vec3>>,
     mut disabled: Local<Option<bool>>,

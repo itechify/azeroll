@@ -26,6 +26,13 @@ pub struct DoodadFade {
     pub(crate) blend: Handle<WowModelMaterial>,
 }
 
+impl DoodadFade {
+    /// The steady and blend materials, for a mode that drives a part's alpha itself.
+    pub fn materials(&self) -> (&Handle<WowModelMaterial>, &Handle<WowModelMaterial>) {
+        (&self.cutout, &self.blend)
+    }
+}
+
 /// Above this bounding radius (yd) a doodad never distance-fades; only the far clip drops it.
 pub const NEVER_FADE_RADIUS: f32 = 7.0;
 

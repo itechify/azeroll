@@ -1,0 +1,1727 @@
+# WoW coordinates: north, west, up. All distances in yards. See goldshire-survey.md.
+start = [-9450, 60, 57]
+start_radius = 0.25
+time_limit = 620
+goal = "Hogger"
+# Deliberately relocated Riverpaw camp, on the surveyed southwest forest pocket.
+camp = [-9600, 260, 48.15]
+patrol = [-9490, 60, 57]
+patrol_at = 5
+patrol_until = 90
+
+[[areas]]
+name = "Inn ground floor"
+centre = [-9462, 26, 56.97]
+radius = 13
+enclosed = true
+clearance = 1.89
+doors = [[-9459.16,44.37,56.95],[-9459.93,38.11,56.95]]
+
+[[areas]]
+name = "Inn yard"
+centre = [-9450, 60, 56]
+radius = 22
+
+[[areas]]
+name = "Market"
+centre = [-9497, 83, 57]
+radius = 32
+
+[[areas]]
+name = "Northern goods"
+centre = [-9385, 60, 60]
+radius = 26
+
+[[areas]]
+name = "Southwest road"
+centre = [-9550, 140, 60]
+radius = 45
+
+[[areas]]
+name = "Stonefield harvest"
+centre = [-9840, 350, 37]
+radius = 55
+
+[[areas]]
+name = "Maclure harvest"
+centre = [-9920, 80, 33]
+radius = 50
+
+[[areas]]
+name = "Riverpaw camp"
+centre = [-9600, 260, 48]
+radius = 48
+
+# Two stops the road was missing: a wreck on the rise, and a roadside camp before the forest.
+[[areas]]
+name = "Smithy"
+centre = [-9462, 123, 59]
+radius = 24
+
+[[areas]]
+name = "Broken cart"
+centre = [-9522, 102, 58]
+radius = 20
+
+[[areas]]
+name = "Roadside camp"
+centre = [-9568, 185, 54]
+radius = 22
+
+# ---------------------------------------------------------------------------------------
+# Scenes. Each is a little story told in a few groups: a spill, a heap, a laid table, a
+# stray. Model lists mix the props; `models` picks per prop (repeat an entry to weight it).
+# Scene-local offsets and headings are Bevy axes: x east, z south, heading 0 = east,
+# pi/2 = south, pi = west, 3pi/2 = north. Sizes: pickup thickness x scale picks the tier.
+# ---------------------------------------------------------------------------------------
+
+# --- The inn: someone left in a hurry --------------------------------------------------
+
+[[scenes]]
+name = "Inn supper spill"
+anchor = [-9460, 32, 56.97]
+indoors = true
+# The table is still laid: what's left of supper sits on top, for the ball that grows tall.
+[[scenes.items]]
+arrangement = 'table-set'
+table = 'World\Generic\Human\Passive Doodads\Tables\InnTableSmall.m2'
+surface = 1.0
+spacing = 0.7
+gap = 0.3
+count = 12
+jitter = 0.1
+models = ['World\Generic\Human\Passive Doodads\Mugs\Mug01.m2', 'World\Generic\Human\Passive Doodads\Mugs\MugFoam01.m2', 'World\Generic\Human\Passive Doodads\Mugs\Stein01.m2', 'World\Generic\Human\Passive Doodads\Goblets\Goblet02.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Plate.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Plate.m2', 'World\Generic\Human\Passive Doodads\Food\BreadLoaf01.m2', 'World\Generic\Human\Passive Doodads\Food\CheeseWheel01.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Bowl.m2', 'World\Generic\Human\Passive Doodads\Bottles\Bottle01.m2']
+# What fell off it.
+# (progress.rs counts the single-model groups below for the "supper spill" challenge: every
+# Pie and Turkey Leg within 4 yd of the anchor must be rolled up.)
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [0.4, 0.3]
+spacing = 1.9
+gap = 0.2
+count = 10
+scale = 1.6
+jitter = 0.2
+tilt = 0.12
+model = 'World\Generic\Human\Passive Doodads\Food\Pie01.m2'
+[[scenes.items]]
+arrangement = 'spill'
+offset = [-0.6, -0.8]
+heading = 0.7
+bend = 0.5
+spacing = 0.7
+count = 6
+jitter = 0.1
+tilt = 0.2
+model = 'World\Generic\Human\Passive Doodads\Food&Utensils\TurkeyLeg.m2'
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [0.2, 0.6]
+spacing = 2.2
+gap = 0.18
+count = 10
+scale = 1.8
+jitter = 0.25
+tilt = 0.12
+models = ['World\Generic\Human\Passive Doodads\Food\CheeseWheel01.m2', 'World\Generic\Human\Passive Doodads\Food\CheeseWheelSwiss01.m2', 'World\Generic\Human\Passive Doodads\Food\CheeseWedge01.m2', 'World\Generic\Human\Passive Doodads\Food\BreadLoaf01.m2', 'World\Generic\Human\Passive Doodads\Food\BreadFrench01.m2', 'World\Generic\Human\Passive Doodads\Food\Muffin01.m2', 'World\Generic\Human\Passive Doodads\Food\BreadLoafHalf.m2']
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-0.4, 0.1]
+spacing = 2.4
+gap = 0.3
+count = 5
+scale = 1.3
+jitter = 0.2
+topple = 0.35
+topple_lift = 0.1
+models = ['World\Generic\Human\Passive Doodads\Mugs\Mug01.m2', 'World\Generic\Human\Passive Doodads\Mugs\MugFoam01.m2', 'World\Generic\Human\Passive Doodads\Mugs\Stein01.m2', 'World\Generic\Human\Passive Doodads\Mugs\Mug02.m2']
+[[scenes.items]]
+arrangement = 'heap'
+offset = [1.9, -1.1]
+spacing = 0.45
+step = 0.07
+tilt = 0.25
+count = 6
+scale = 0.7
+jitter = 0.1
+model = 'World\Generic\Human\Passive Doodads\Plates\GeneralDirtyPlate01.m2'
+# A boot, and a chair that went over with its owner.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-0.8, 0.9]
+spacing = 0.2
+count = 1
+scale = 0.8
+tilt = 0.3
+model = 'World\Generic\Human\Passive Doodads\Clothing\BootsLeatherBrown01.m2'
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-2.3, -1.0]
+spacing = 0.2
+count = 1
+topple = 1.0
+topple_lift = 0.3
+model = 'World\Azeroth\Westfall\PassiveDoodads\WestfallChair\WestfallChair.m2'
+
+[[scenes]]
+name = "Inn porch tray"
+anchor = [-9452, 52, 57]
+# The waitress tripped on the step; supper went everywhere. A dense splash where the tray
+# landed, a few stragglers, and a spill that skids off toward the crossroads.
+[[scenes.items]]
+arrangement = 'cluster'
+spacing = 2.8
+gap = 0.2
+count = 40
+scale = 1.8
+jitter = 0.3
+tilt = 0.12
+models = ['World\Generic\Human\Passive Doodads\Food\Pie01.m2', 'World\Generic\Human\Passive Doodads\Food\Pie01.m2', 'World\Generic\Human\Passive Doodads\Food\Pie01.m2', 'World\Generic\Human\Passive Doodads\Food\CheeseWheel01.m2', 'World\Generic\Human\Passive Doodads\Food\CheeseWheelSwiss01.m2', 'World\Generic\Human\Passive Doodads\Food\CheeseWedge01.m2', 'World\Generic\Human\Passive Doodads\Food\BreadLoaf01.m2', 'World\Generic\Human\Passive Doodads\Food\BreadFrench01.m2', 'World\Generic\Human\Passive Doodads\Food\Muffin01.m2', 'World\Generic\Human\Passive Doodads\Food\BreadLoafHalf.m2']
+[[scenes.items]]
+arrangement = 'cluster'
+spacing = 3.8
+gap = 0.35
+count = 26
+jitter = 0.18
+tilt = 0.2
+topple = 0.15
+topple_lift = 0.1
+models = ['World\Generic\Human\Passive Doodads\Food&Utensils\TurkeyLeg.m2', 'World\Generic\Human\Passive Doodads\Food&Utensils\TurkeyLeg.m2', 'World\Generic\Human\Passive Doodads\Mugs\Stein01.m2', 'World\Generic\Human\Passive Doodads\Mugs\Mug02.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Plate.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Bowl.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Apple.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Pear.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Orange.m2', 'World\Generic\Human\Passive Doodads\Goblets\Goblet02.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Banana.m2']
+[[scenes.items]]
+arrangement = 'spill'
+heading = 3.4
+bend = 0.5
+spacing = 1.1
+offset = [-2.5, -0.5]
+count = 14
+jitter = 0.15
+tilt = 0.2
+models = ['World\Generic\Human\Passive Doodads\Food&Utensils\TurkeyLeg.m2', 'World\Generic\Human\Passive Doodads\Food&Utensils\TurkeyLeg.m2', 'World\Generic\Human\Passive Doodads\Food&Utensils\Haunch.m2', 'World\Generic\Human\Passive Doodads\Mugs\Stein01.m2', 'World\Generic\Human\Passive Doodads\Mugs\Mug02.m2', 'World\Generic\Human\Passive Doodads\Food\BreadFrench01.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Plate.m2']
+# The bread that rolled furthest.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [3.0, 2.0]
+spacing = 4.5
+gap = 0.8
+count = 10
+scale = 0.55
+jitter = 0.2
+tilt = 0.15
+model = 'World\Generic\Human\Passive Doodads\Food\bread01.m2'
+[[scenes.items]]
+arrangement = 'heap'
+offset = [2.5, 1.2]
+spacing = 0.5
+step = 0.08
+tilt = 0.3
+count = 7
+scale = 0.75
+jitter = 0.1
+models = ['World\Generic\Human\Passive Doodads\Plates\GeneralDirtyPlate01.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Plate.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Bowl.m2']
+# The cook's contribution to the evidence: a cleaver, and a boot in the pie.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-1.2, 1.4]
+spacing = 0.2
+count = 1
+tilt = 0.5
+model = 'World\Generic\Human\Passive Doodads\Food&Utensils\Cleaver01.m2'
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [0.3, -0.2]
+spacing = 0.2
+count = 1
+scale = 0.85
+tilt = 0.25
+model = 'World\Generic\Human\Passive Doodads\Clothing\BootsLeatherBlack.m2'
+
+# --- The coop: the feed sack burst ----------------------------------------------------
+
+[[scenes]]
+name = "Coop feed raid"
+anchor = [-9442, 54, 57]
+# The crates by the coop wall have been climbed.
+[[scenes.items]]
+arrangement = 'heap'
+offset = [2.8, -1.4]
+spacing = 1.3
+step = 0.55
+tilt = 0.1
+topple = 0.15
+topple_lift = 0.3
+count = 8
+jitter = 0.1
+models = ['World\Generic\Human\Passive Doodads\Crates\ReplaceCrate01.m2', 'World\Generic\Human\Passive Doodads\Crates\ReplaceCrate02.m2', 'World\Generic\Human\Passive Doodads\Crates\ReplaceCrate03.m2', 'World\Generic\Human\Passive Doodads\Crates\ReplaceCrate02.m2']
+# Sacks, one of them burst, and the grain that came out.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-1.8, 1.2]
+spacing = 1.5
+gap = 0.8
+count = 6
+jitter = 0.12
+topple = 0.45
+topple_lift = 0.15
+models = ['World\Generic\Human\Passive Doodads\Sacks\PlaguedGrainSack01.m2', 'World\Generic\Human\Passive Doodads\Sacks\PlaguedGrainSack02.m2']
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-1.4, 0.4]
+spacing = 2.6
+gap = 0.2
+count = 24
+scale = 1.8
+jitter = 0.3
+tilt = 0.15
+models = ['World\Azeroth\Elwynn\PassiveDoodads\CornCrop\corn.m2', 'World\Azeroth\Elwynn\PassiveDoodads\CornCrop\corn.m2', 'World\Azeroth\Elwynn\PassiveDoodads\CornCrop\corn.m2', 'World\Generic\Human\Passive Doodads\Food\BreadLoafHalf.m2', 'World\Generic\Human\Passive Doodads\Food\BreadSlice.m2', 'World\Generic\Human\Passive Doodads\Food\Muffin01.m2']
+[[scenes.items]]
+arrangement = 'scatter'
+offset = [0.0, 1.0]
+spacing = 0.7
+count = 10
+scale = 0.7
+jitter = 0.2
+tilt = 0.15
+models = ['World\Generic\Human\Passive Doodads\Food\bread01.m2', 'World\Generic\Human\Passive Doodads\Food\BreadFrench01.m2', 'World\Generic\Human\Passive Doodads\Food\BreadFrench01.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Apple.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Pear.m2']
+
+# The raiders.
+[[scenes.items]]
+species = 'Chicken'
+arrangement = 'cluster'
+offset = [-1.4, 0.6]
+spacing = 2.8
+count = 10
+# The feed bucket, kicked over; and the farmer's prize pumpkin, which is not feed.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [0.8, 3.2]
+spacing = 0.2
+count = 1
+topple = 1.0
+topple_lift = 0.4
+model = 'World\Generic\Human\Passive Doodads\Buckets\bucket.m2'
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [4.5, 1.6]
+spacing = 0.2
+count = 1
+scale = 0.5
+yaw = 0.4
+model = 'World\Goober\G_Pumpkin_01.m2'
+
+# --- The market: a merchant unloading --------------------------------------------------
+
+[[scenes]]
+name = "Merchant unloading"
+anchor = [-9498, 87, 57]
+# The crates came off first, in a stack that has not been secured.
+[[scenes.items]]
+arrangement = 'heap'
+offset = [-3.2, 2.0]
+spacing = 2.2
+step = 0.6
+tilt = 0.12
+topple = 0.15
+topple_lift = 0.3
+gap = 1.0
+count = 24
+jitter = 0.1
+models = ['World\Generic\Human\Passive Doodads\Crates\ReplaceCrate01.m2', 'World\Generic\Human\Passive Doodads\Crates\ReplaceCrate02.m2', 'World\Generic\Human\Passive Doodads\Crates\ReplaceCrate03.m2', 'World\Generic\Human\Passive Doodads\Crates\ReplaceCrate02.m2', 'World\Generic\Human\Passive Doodads\Crates\StormwindCrate01.m2']
+# ...then the barrels, one of which has gone over.
+[[scenes.items]]
+arrangement = 'heap'
+offset = [3.2, -1.6]
+spacing = 2.0
+step = 0.95
+tilt = 0.08
+topple = 0.3
+topple_lift = 0.45
+gap = 1.0
+count = 12
+scale = 0.92
+jitter = 0.1
+models = ['World\Azeroth\Westfall\PassiveDoodads\Barrel\WestFallBarrel01.m2', 'World\Generic\PassiveDoodads\Barrel\Barrel01.m2', 'World\Generic\PassiveDoodads\Furniture\Containers\Barrel02.m2', 'World\Azeroth\Westfall\PassiveDoodads\Barrel\WestFallBarrel01.m2']
+# Sacks propped along the cart, and herb sacks the apothecary will want.
+[[scenes.items]]
+arrangement = 'line'
+offset = [0.0, -5.0]
+heading = 0.25
+spacing = 1.5
+wobble = 0.35
+count = 8
+jitter = 0.1
+topple = 0.2
+topple_lift = 0.2
+models = ['World\Generic\Human\Passive Doodads\Sacks\PlaguedGrainSack01.m2', 'World\Generic\Human\Passive Doodads\Sacks\PlaguedGrainSack02.m2', 'World\Generic\Human\Passive Doodads\Sacks\SackHerbsPeacebloom01.m2', 'World\Generic\Human\Passive Doodads\Sacks\PlaguedGrainSack02.m2', 'World\Generic\Human\Passive Doodads\Sacks\SackHerbsStranglekelp01.m2']
+# A crate split open on the cobbles: loaves, fruit, bottles and rolling cheese.
+[[scenes.items]]
+arrangement = 'spill'
+offset = [-6.0, 4.5]
+heading = 0.5
+bend = 0.4
+spacing = 1.3
+count = 24
+jitter = 0.2
+tilt = 0.2
+models = ['World\Generic\Human\Passive Doodads\Food\bread01.m2', 'World\Generic\Human\Passive Doodads\Food\bread01.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Melon.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_MelonSlice02.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Apple.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Pear.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_BananaBunch.m2', 'World\Generic\Human\Passive Doodads\Bottles\Bottle01.m2', 'World\Generic\Human\Passive Doodads\Bottles\GreenBottle01.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Orange.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Apple.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Plate.m2']
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-5.0, 3.0]
+spacing = 2.2
+gap = 0.3
+count = 16
+scale = 2.5
+jitter = 0.25
+tilt = 0.12
+models = ['World\Generic\Human\Passive Doodads\Food\CheeseWheel01.m2', 'World\Generic\Human\Passive Doodads\Food\CheeseWheelSwiss01.m2', 'World\Generic\Human\Passive Doodads\Food\CheeseWedge01.m2', 'World\Generic\Human\Passive Doodads\Food\Pie01.m2']
+# The big one: a suspiciously large cheese. And the merchant's own lunch.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [5.5, 3.5]
+spacing = 0.2
+count = 1
+scale = 12
+yaw = 0.7
+model = 'World\Generic\Human\Passive Doodads\Food\CheeseWheel01.m2'
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [1.0, 4.5]
+spacing = 0.2
+count = 1
+scale = 0.7
+yaw = 2.1
+model = 'World\Generic\Human\Passive Doodads\Food\RoastBoarPlatter.m2'
+# A helm someone left on the barrels.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [3.2, -1.6]
+spacing = 0.15
+lift = 1.9
+count = 1
+tilt = 0.3
+model = 'World\Generic\Human\Passive Doodads\Armor\ArmorHelmGold.m2'
+
+[[scenes]]
+name = "Merchant's samples"
+anchor = [-9488, 76, 57]
+# Samples laid out for the road: everything a traveller might want, at the size a traveller carries.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [0.0, 0.0]
+spacing = 6.0
+gap = 1.0
+count = 34
+jitter = 0.1
+tilt = 0.15
+topple = 0.2
+topple_lift = 0.15
+models = ['World\Generic\Human\Passive Doodads\Food&Utensils\TurkeyLeg.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_BananaBunch.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanArrows.m2', 'World\Generic\Human\Passive Doodads\Crates\ReplaceCrate02.m2', 'World\Generic\Human\Passive Doodads\Sacks\PlaguedGrainSack01.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanHammer01.m2', 'World\Generic\PassiveDoodads\Barrel\Barrel01.m2', 'World\Azeroth\Westfall\PassiveDoodads\Barrel\WestFallBarrel01.m2', 'World\Generic\Gnome\Passive Doodads\Buckets\Gnomebucket05.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Pear.m2', 'World\Generic\Human\Passive Doodads\Sacks\PlaguedGrainSack02.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanMace01.m2', 'World\Azeroth\Elwynn\PassiveDoodads\Jars\Jar01.m2', 'World\Generic\Human\Passive Doodads\Statues\BustHM01.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Melon.m2', 'World\Generic\Human\Passive Doodads\Food&Utensils\Haunch.m2']
+# And the ones that fell off the end of the table.
+[[scenes.items]]
+arrangement = 'spill'
+offset = [-1.0, -2.0]
+heading = 2.6
+bend = 0.5
+spacing = 1.1
+count = 16
+jitter = 0.15
+tilt = 0.2
+models = ['World\Generic\PassiveDoodads\Fruits\Fruit_Apple.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Orange.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Pear.m2', 'World\Generic\Human\Passive Doodads\Food\BreadFrench01.m2', 'World\Generic\Human\Passive Doodads\Goblets\Goblet02.m2', 'World\Generic\Human\Passive Doodads\Mugs\Mug02.m2', 'World\Generic\Human\Passive Doodads\Bottles\Bottle01.m2', 'World\Generic\Human\Passive Doodads\Bottles\GreenBottle01.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Plate.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Bowl.m2']
+# The stall's cat, taking inventory.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [2.5, 2.5]
+spacing = 0.2
+count = 1
+yaw = 4.0
+model = 'World\Goober\G_RelicNECat.m2'
+
+# --- Northern goods: a household's belongings -----------------------------------------
+
+[[scenes]]
+name = "Northern household"
+anchor = [-9385, 60, 60]
+# Dinner is laid for a family that left. A table, with its supper, and a bench.
+[[scenes.items]]
+arrangement = 'table-set'
+offset = [0.0, 0.0]
+table = 'World\Azeroth\Westfall\PassiveDoodads\WestfallTable\WestfallTable.m2'
+surface = 1.0
+spacing = 0.8
+gap = 0.35
+count = 9
+jitter = 0.1
+models = ['World\Generic\Human\Passive Doodads\Plates\GeneralDirtyPlate01.m2', 'World\Generic\Human\Passive Doodads\Mugs\Stein01.m2', 'World\Generic\Human\Passive Doodads\Mugs\Mug01.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Bowl.m2', 'World\Generic\Human\Passive Doodads\Bottles\Bottle01.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Apple.m2', 'World\Generic\Human\Passive Doodads\Food\bread01.m2', 'World\Generic\Human\Passive Doodads\Goblets\Goblet02.m2']
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [3.6, 1.8]
+spacing = 0.2
+count = 1
+yaw = 1.2
+model = 'World\Generic\Human\Passive Doodads\Benches\StormWindBench01.m2'
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-2.6, 0.9]
+spacing = 0.8
+gap = 0.9
+count = 3
+topple = 0.5
+topple_lift = 0.3
+models = ['World\Azeroth\Westfall\PassiveDoodads\WestfallChair\WestfallChair.m2', 'World\Generic\Gnome\Passive Doodads\Furniture\GnomeChair03.m2']
+# Crates stacked against the table by whoever tried to carry it off: a stair to the supper.
+[[scenes.items]]
+arrangement = 'heap'
+offset = [2.6, 1.0]
+spacing = 1.2
+step = 0.4
+gap = 0.8
+tilt = 0.08
+count = 7
+jitter = 0.1
+models = ['World\Generic\Human\Passive Doodads\Crates\ReplaceCrate02.m2', 'World\Generic\Human\Passive Doodads\Crates\ReplaceCrate03.m2', 'World\Generic\Human\Passive Doodads\Crates\ReplaceCrate02.m2', 'World\Generic\Human\Passive Doodads\Sacks\PlaguedGrainSack01.m2']
+# The stuff they did not take: barrels and firewood, and a yarn ball that got away.
+[[scenes.items]]
+arrangement = 'heap'
+offset = [-6.5, -3.0]
+spacing = 2.0
+step = 0.95
+gap = 1.0
+tilt = 0.08
+topple = 0.25
+topple_lift = 0.45
+count = 12
+scale = 0.95
+jitter = 0.1
+models = ['World\Azeroth\Westfall\PassiveDoodads\Barrel\WestFallBarrel01.m2', 'World\Generic\PassiveDoodads\Barrel\Barrel01.m2', 'World\Generic\PassiveDoodads\Furniture\Containers\Barrel02.m2']
+[[scenes.items]]
+arrangement = 'heap'
+offset = [6.0, -4.0]
+spacing = 2.6
+step = 0.55
+gap = 1.2
+tilt = 0.08
+count = 10
+jitter = 0.1
+models = ['World\Generic\Human\Passive Doodads\firewood\FirewoodPile01.m2', 'World\Generic\Human\Passive Doodads\firewood\FirewoodPile03.m2', 'World\Generic\Human\Passive Doodads\firewood\FirewoodPile01.m2']
+[[scenes.items]]
+arrangement = 'spill'
+offset = [-1.0, 3.5]
+heading = 1.8
+bend = 0.6
+spacing = 1.2
+count = 12
+scale = 1.5
+jitter = 0.2
+models = ['World\Generic\Human\Passive Doodads\Clothing\ClothYarnBallRed.m2', 'World\Generic\Human\Passive Doodads\Clothing\ClothYarnBallYellow.m2', 'World\Generic\Human\Passive Doodads\Cloth\ClothSpoolBlue.m2', 'World\Generic\Human\Passive Doodads\Cloth\ClothSpoolYellow.m2', 'World\Generic\Human\Passive Doodads\Clothing\FoldedShirtBrown.m2', 'World\Generic\Human\Passive Doodads\Clothing\FoldedPantsGrey.m2']
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-4.0, 6.5]
+spacing = 3.0
+gap = 1.0
+count = 6
+jitter = 0.15
+topple = 0.2
+topple_lift = 0.2
+models = ['World\Generic\Human\Passive Doodads\Sacks\PlaguedGrainSack02.m2', 'World\Generic\Human\Passive Doodads\Buckets\bucket.m2', 'World\Azeroth\Elwynn\PassiveDoodads\jugs\jug01.m2', 'World\Generic\Orc\Passive Doodads\Jugs\OrcJug01.m2']
+[[scenes.items]]
+species = 'Rabbit'
+arrangement = 'cluster'
+offset = [-4.0, 5.0]
+spacing = 3.5
+count = 6
+
+[[scenes]]
+name = 'Northern pantry'
+anchor = [-9392, 68, 60]
+# The pantry, turned out onto the grass by the family's hurry.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [0.0, 0.0]
+spacing = 7.0
+gap = 1.3
+count = 26
+jitter = 0.12
+tilt = 0.1
+topple = 0.2
+topple_lift = 0.2
+models = ['World\Generic\Human\Passive Doodads\Buckets\bucket.m2', 'World\Generic\Gnome\Passive Doodads\Buckets\Gnomebucket05.m2', 'World\Generic\Human\Passive Doodads\Sacks\SackHerbsPeacebloom01.m2', 'World\Generic\Human\Passive Doodads\BeerKegs\BeerKeg01.m2', 'World\Generic\Human\Passive Doodads\BeerKegs\BeerKeg02.m2', 'World\Generic\Human\Passive Doodads\Crates\ReplaceCrate01.m2', 'World\Generic\Human\Passive Doodads\Crates\ReplaceCrate03.m2', 'World\Generic\PassiveDoodads\Barrel\Barrel01.m2', 'World\Generic\Human\Passive Doodads\Sacks\PlaguedGrainSack01.m2', 'World\Generic\PassiveDoodads\Fruits\FruitBowl_Apples.m2', 'World\Generic\PassiveDoodads\Fruits\FruitBowl_Mixed.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Melon.m2', 'World\Azeroth\Westfall\PassiveDoodads\Crate\WestFallCrate.m2']
+# And the jam jars that rolled the furthest.
+[[scenes.items]]
+arrangement = 'spill'
+offset = [2.0, -1.0]
+heading = 1.6
+bend = 0.5
+spacing = 1.0
+count = 22
+jitter = 0.15
+tilt = 0.2
+models = ['World\Generic\PassiveDoodads\Fruits\Fruit_Pear.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Apple.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Orange.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_MelonSlice02.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_BananaBunch.m2', 'World\Generic\Human\Passive Doodads\Food\BreadFrench01.m2', 'World\Azeroth\Elwynn\PassiveDoodads\jugs\jug01.m2', 'World\Azeroth\Elwynn\PassiveDoodads\jugs\jug02.m2', 'World\Azeroth\Elwynn\PassiveDoodads\Jars\Jar01.m2', 'World\Generic\Human\Passive Doodads\Bottles\Bottle01.m2', 'World\Generic\Human\Passive Doodads\Mugs\Mug02.m2']
+# Friday's fish, left for the cat.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-3.0, 2.5]
+spacing = 0.2
+count = 1
+yaw = 0.6
+model = 'World\Generic\Human\Passive Doodads\Food\FishPlatter01.m2'
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-2.3, 2.9]
+spacing = 0.2
+count = 1
+yaw = 3.4
+model = 'World\Goober\G_RelicNECat.m2'
+
+[[scenes]]
+name = 'Northern barn spill'
+anchor = [-9378, 48, 61]
+# The barn door gave way: what was stacked behind it is now in front of it.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [0.0, 0.0]
+spacing = 6.0
+gap = 1.3
+count = 20
+jitter = 0.1
+tilt = 0.1
+topple = 0.25
+topple_lift = 0.2
+models = ['World\Azeroth\Westfall\PassiveDoodads\Crate\WestFallCrate.m2', 'World\Generic\PassiveDoodads\Crate02\Crate02.m2', 'World\Goober\G_Crate02.m2', 'World\Generic\Orc\Passive Doodads\BarrelsandCrates\OrcBarrel03.m2', 'World\Generic\Orc\Passive Doodads\BarrelsandCrates\OrcBarrel04.m2', 'World\Generic\Orc\Passive Doodads\BarrelsandCrates\OrcCrate08.m2', 'World\Generic\Orc\Passive Doodads\BarrelsandCrates\OrcCrate09.m2', 'World\Generic\Human\Passive Doodads\Food\FishPlatter01.m2', 'World\Goober\G_Pumpkin_01.m2', 'World\Azeroth\Elwynn\PassiveDoodads\Haystacks\haystack02.m2', 'World\Generic\Human\Passive Doodads\BeerKegs\BeerKeg01.m2']
+# And the feed, which found the way out.
+[[scenes.items]]
+arrangement = 'spill'
+offset = [2.0, 1.0]
+heading = 3.1
+bend = 0.5
+spacing = 1.2
+count = 14
+jitter = 0.15
+tilt = 0.15
+models = ['World\Generic\Human\Passive Doodads\Sacks\PlaguedGrainSack01.m2', 'World\Generic\Human\Passive Doodads\Sacks\PlaguedGrainSack02.m2', 'World\Generic\Human\Passive Doodads\Sacks\SackHerbsPeacebloom01.m2', 'World\Generic\Human\Passive Doodads\Buckets\bucket.m2', 'World\Generic\Gnome\Passive Doodads\Buckets\Gnomebucket05.m2', 'World\Azeroth\Elwynn\PassiveDoodads\Jars\Jar01.m2', 'World\Azeroth\Elwynn\PassiveDoodads\Jars\Jar02.m2', 'World\Azeroth\Elwynn\PassiveDoodads\jugs\jug01.m2', 'World\Generic\Human\Passive Doodads\PeasantLumber\PeasantLumber01.m2']
+# The barrow that was supposed to prevent this.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-3.5, -2.0]
+spacing = 0.2
+count = 1
+yaw = 0.2
+topple = 1.0
+topple_lift = 0.3
+model = 'World\Generic\PassiveDoodads\Misc\WheelBarrow\CaveMineWheelbarrow01.m2'
+
+# --- The smithy: fuel in, weapons out --------------------------------------------------
+
+[[scenes]]
+name = "Smithy fuel and weapons"
+anchor = [-9462, 123, 59]
+# The coal-boy dumped the firewood where it was easiest, which is everywhere.
+[[scenes.items]]
+arrangement = 'heap'
+offset = [-2.0, -2.0]
+spacing = 3.4
+step = 0.6
+gap = 1.3
+tilt = 0.08
+topple = 0.1
+topple_lift = 0.4
+count = 18
+jitter = 0.1
+models = ['World\Generic\Human\Passive Doodads\firewood\FirewoodPile03.m2', 'World\Generic\Human\Passive Doodads\firewood\FirewoodPile01.m2', 'World\Generic\Human\Passive Doodads\firewood\FirewoodPile03.m2']
+# Orders half done: blades, hafts and armour in a heap by the grindstone.
+[[scenes.items]]
+arrangement = 'heap'
+offset = [4.0, 3.0]
+spacing = 1.5
+step = 0.14
+tilt = 0.3
+count = 22
+jitter = 0.12
+models = ['World\Generic\Human\Passive Doodads\Weapons&Armor\HumanSword01.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanSword02.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanMace01.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanMace02.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanAxe01.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanAxe02.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanHammer01.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanHammer02.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanSpear01.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanArrow.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanArrows.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanBow01.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\WallShield03.m2', 'World\Generic\PassiveDoodads\Weapons\leather_shield.m2']
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [4.0, 3.0]
+spacing = 2.4
+gap = 0.35
+count = 12
+jitter = 0.12
+tilt = 0.25
+models = ['World\Generic\Human\Passive Doodads\Armor\ArmorBreastplateBlue.m2', 'World\Generic\Human\Passive Doodads\Armor\ArmorBreastplateGold.m2', 'World\Generic\Human\Passive Doodads\Armor\ArmorHelmGreen.m2', 'World\Generic\Human\Passive Doodads\Armor\ArmorHelmTrim.m2', 'World\Generic\Human\Passive Doodads\Armor\ArmorLeatherHelmBlack.m2', 'World\Generic\Human\Passive Doodads\Armor\ArmorBracerBlue.m2', 'World\Generic\Human\Passive Doodads\Armor\ArmorShoulderGold.m2', 'World\Generic\Human\Passive Doodads\Armor\ArmorLegPlateSilver.m2']
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [7.0, 6.0]
+spacing = 0.2
+count = 1
+yaw = 0.3
+model = 'World\Azeroth\Westfall\PassiveDoodads\GrindStone\GrindStone.m2'
+# The anvil has a hammer left on it, and a bucket of quench water that nobody emptied.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-5.5, 4.5]
+spacing = 0.2
+count = 1
+yaw = 1.0
+model = 'World\Azeroth\Elwynn\PassiveDoodads\Anvil\Anvil.m2'
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-5.5, 4.5]
+spacing = 0.2
+lift = 0.9
+count = 1
+yaw = 0.2
+tilt = 0.08
+model = 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanHammer02.m2'
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-7.0, 5.5]
+spacing = 1.5
+gap = 1.0
+count = 3
+topple = 0.3
+topple_lift = 0.4
+models = ['World\Generic\Human\Passive Doodads\Buckets\bucket.m2', 'World\Generic\Gnome\Passive Doodads\Buckets\Gnomebucket05.m2']
+# Recruits' dummies, the worse for wear.
+[[scenes.items]]
+arrangement = 'scatter'
+offset = [0.0, 10.0]
+spacing = 3.4
+count = 6
+topple = 0.2
+topple_lift = 0.5
+models = ['World\Generic\Human\Passive Doodads\WoodenDummies\GeneralWoodenDummy02.m2', 'World\Generic\Human\Passive Doodads\WoodenDummies\StormWindWoodenDummy01.m2', 'World\Generic\Human\Passive Doodads\WoodenDummies\GeneralWoodenDummy02.m2', 'World\Generic\Human\Passive Doodads\WoodenDummies\StormWindWoodenDummy01.m2', 'World\Generic\Human\Passive Doodads\WoodenDummies\GeneralWoodenDummy02.m2']
+
+
+# --- Roadside woodcutters --------------------------------------------------------------
+
+[[scenes]]
+name = "Roadside woodcutters"
+anchor = [-9550, 140, 60]
+# Felled and bucked: stumps with the axes still near them, logs in uneven stacks.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [0.0, 0.0]
+spacing = 7.0
+gap = 4.0
+count = 4
+jitter = 0.15
+models = ['World\Azeroth\Westfall\PassiveDoodads\TreeStumps\WestFallTreeStump02.m2', 'World\Azeroth\Westfall\PassiveDoodads\TreeStumps\WestFallTreeStump02.m2', 'World\Azeroth\Westfall\PassiveDoodads\TreeStumps\WestFallTreeStump02.m2', 'World\Azeroth\Westfall\PassiveDoodads\TreeStumps\WestFallTreeStump01.m2']
+
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [0.0, 0.0]
+spacing = 8.0
+gap = 1.5
+count = 6
+jitter = 0.1
+tilt = 0.3
+topple = 0.6
+topple_lift = 0.2
+models = ['World\Generic\Human\Passive Doodads\Weapons&Armor\HumanAxe01.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanAxe02.m2', 'World\Generic\Tauren\Passive Doodads\Weapons\Tauren_WeaponHatchet01.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanHammer02.m2']
+[[scenes.items]]
+arrangement = 'heap'
+offset = [-6.0, 3.0]
+spacing = 3.2
+step = 0.6
+gap = 1.2
+tilt = 0.08
+count = 16
+jitter = 0.1
+models = ['World\Generic\Human\Passive Doodads\firewood\FirewoodPile03.m2', 'World\Generic\Human\Passive Doodads\firewood\FirewoodPile01.m2', 'World\Generic\Human\Passive Doodads\firewood\FirewoodPile03.m2']
+[[scenes.items]]
+arrangement = 'heap'
+offset = [7.0, -4.0]
+spacing = 2.8
+step = 0.5
+gap = 1.2
+count = 12
+jitter = 0.1
+models = ['World\Generic\Human\Passive Doodads\firewood\FirewoodPile01.m2', 'World\Generic\Human\Passive Doodads\firewood\FirewoodPile03.m2']
+# A barrel cart came apart: broken staves everywhere.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [4.0, 7.0]
+spacing = 5.5
+gap = 2.4
+count = 16
+jitter = 0.1
+topple = 0.5
+topple_lift = 0.35
+models = ['World\Generic\PassiveDoodads\Barrel\BrokenBarrel01.m2', 'World\Generic\PassiveDoodads\Barrel\BrokenBarrel01.m2', 'World\Generic\PassiveDoodads\Barrel\BrokenBarrel02.m2', 'World\Generic\PassiveDoodads\Barrel\BrokenBarrel01.m2']
+[[scenes.items]]
+arrangement = 'scatter'
+offset = [-3.0, -6.0]
+spacing = 3.0
+count = 10
+jitter = 0.1
+topple = 0.5
+topple_lift = 0.35
+models = ['World\Generic\PassiveDoodads\Barrel\BrokenBarrel02.m2', 'World\Azeroth\Westfall\PassiveDoodads\Barrel\WestFallBarrel01.m2', 'World\Generic\PassiveDoodads\Barrel\BrokenBarrel02.m2']
+# Lunch on the bench: they went back to work in a hurry.
+[[scenes.items]]
+arrangement = 'table-set'
+offset = [-9.0, 0.0]
+table = 'World\Generic\Human\Passive Doodads\Benches\StormWindBench01.m2'
+surface = 0.55
+spacing = 0.45
+gap = 0.22
+count = 7
+heading = 0.4
+models = ['World\Generic\Human\Passive Doodads\Food&Utensils\TurkeyLeg.m2', 'World\Generic\Human\Passive Doodads\Food\bread01.m2', 'World\Generic\Human\Passive Doodads\Mugs\Stein01.m2', 'World\Generic\Human\Passive Doodads\Bottles\Bottle01.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Bowl.m2', 'World\Generic\Human\Passive Doodads\Mugs\Mug02.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Apple.m2']
+scale = 0.9
+# Grain sacks piled up to the bench, so the lunch is not out of reach of a growing ball.
+[[scenes.items]]
+arrangement = 'heap'
+offset = [-6.8, 1.2]
+spacing = 1.0
+step = 0.3
+gap = 0.7
+tilt = 0.1
+count = 6
+jitter = 0.1
+models = ['World\Generic\Human\Passive Doodads\Sacks\PlaguedGrainSack02.m2', 'World\Generic\Human\Passive Doodads\Sacks\PlaguedGrainSack01.m2', 'World\Generic\Human\Passive Doodads\Sacks\PlaguedGrainSack02.m2', 'World\Generic\Human\Passive Doodads\Crates\ReplaceCrate02.m2']
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-9.0, 1.8]
+spacing = 0.2
+count = 1
+scale = 0.9
+topple = 1.0
+topple_lift = 0.3
+model = 'World\Generic\Human\Passive Doodads\Clothing\BootsLeatherDark.m2'
+
+# --- Stonefield harvest ----------------------------------------------------------------
+
+[[scenes]]
+name = "Stonefield harvest"
+anchor = [-9840, 350, 37]
+# The hay is in. Most of it is where it should be.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [0.0, 0.0]
+spacing = 14.0
+gap = 3.0
+count = 24
+jitter = 0.12
+models = ['World\Azeroth\Elwynn\PassiveDoodads\Haystacks\haystack02.m2', 'World\Azeroth\Elwynn\PassiveDoodads\Haystacks\haystack02.m2', 'World\Azeroth\Elwynn\PassiveDoodads\Haystacks\haystack01.m2', 'World\Generic\Human\Passive Doodads\HayPiles\ShadowfangHayPile02.m2', 'World\Generic\Human\Passive Doodads\HayPiles\ShadowfangHayPile02.m2', 'World\Generic\Human\Passive Doodads\HayPiles\ShadowfangHayPile01.m2']
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [6.0, 4.0]
+spacing = 11.0
+gap = 4.0
+count = 22
+jitter = 0.12
+models = ['World\Generic\Human\Passive Doodads\HayPiles\ShadowfangHayPile02.m2', 'World\Generic\Human\Passive Doodads\HayPiles\ShadowfangHayPile02.m2', 'World\Generic\Human\Passive Doodads\HayPiles\ShadowfangHayPile01.m2', 'World\Azeroth\Duskwood\PassiveDoodads\Straw\DuskwoodStraw02.m2', 'World\Azeroth\Elwynn\PassiveDoodads\Haystacks\haystack02.m2']
+# The pumpkin patch got out of hand.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-9.0, -6.0]
+spacing = 7.0
+gap = 2.0
+count = 16
+scale = 0.8
+jitter = 0.25
+models = ['World\Goober\G_Pumpkin_01.m2', 'World\Goober\G_Pumpkin_02.m2', 'World\Goober\G_Pumpkin_03.m2', 'World\Azeroth\Duskwood\PassiveDoodads\Bush\Pumpkin01.m2', 'World\Goober\G_Pumpkin_01.m2']
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-9.0, -6.0]
+spacing = 5.0
+gap = 1.2
+count = 10
+scale = 0.5
+jitter = 0.2
+models = ['World\Goober\G_Pumpkin_01.m2', 'World\Goober\G_Pumpkin_02.m2', 'World\Goober\G_Watermelon.m2']
+# Two wagons mid-load, abandoned at angles; a scarecrow overseeing.
+[[scenes.items]]
+arrangement = 'scatter'
+offset = [-2.0, 10.0]
+spacing = 8.0
+count = 3
+models = ['World\Azeroth\Duskwood\PassiveDoodads\DuskwoodHaywagon\DuskwoodHayWagon.m2', 'World\Azeroth\Westfall\PassiveDoodads\HayWagon\WestfallHayWagon.m2', 'World\Azeroth\Duskwood\PassiveDoodads\DuskwoodHaywagon\DuskwoodHayWagon.m2']
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [10.0, -8.0]
+spacing = 0.2
+count = 1
+yaw = 5.5
+model = 'World\Azeroth\Westfall\PassiveDoodads\Scarecrow\WestFallScarecrow.m2'
+# Tools, and the farmhand who went to look for them.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-5.0, 7.0]
+spacing = 4.5
+gap = 1.2
+count = 7
+topple = 0.3
+topple_lift = 0.3
+models = ['World\Generic\PassiveDoodads\Misc\WheelBarrow\CaveMineWheelbarrow01.m2', 'World\Azeroth\Elwynn\PassiveDoodads\GrapeBuckets\GrapeBucket01.m2', 'World\Generic\Human\Passive Doodads\Buckets\bucket.m2', 'World\Azeroth\Elwynn\PassiveDoodads\Shovel\Shovel.m2', 'World\Azeroth\Westfall\PassiveDoodads\ButterChurner\ButterChurner.m2', 'World\Azeroth\Elwynn\PassiveDoodads\Shovel\Shovel.m2']
+
+# --- Maclure vineyard ------------------------------------------------------------------
+
+[[scenes]]
+name = "Maclure vintage"
+anchor = [-9920, 80, 33]
+# Barrels of last year, stacked by a man who was paid per barrel not per stack.
+[[scenes.items]]
+arrangement = 'heap'
+offset = [-5.0, -3.0]
+spacing = 3.4
+step = 0.95
+gap = 1.2
+tilt = 0.08
+topple = 0.2
+topple_lift = 0.45
+count = 18
+scale = 0.95
+jitter = 0.1
+models = ['World\Azeroth\Westfall\PassiveDoodads\Barrel\WestFallBarrel01.m2', 'World\Generic\PassiveDoodads\Barrel\Barrel01.m2', 'World\Generic\PassiveDoodads\Furniture\Containers\Barrel02.m2', 'World\Generic\Dwarf\Passive Doodads\Barrels\DwarvenBarrel01.m2', 'World\Azeroth\Westfall\PassiveDoodads\Barrel\WestFallBarrel01.m2']
+# Grape buckets, and the jugs and bottles the harvest is for.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [5.0, 2.0]
+spacing = 4.0
+gap = 1.4
+count = 10
+scale = 0.95
+jitter = 0.1
+models = ['World\Azeroth\Elwynn\PassiveDoodads\GrapeBuckets\GrapeBucket01.m2', 'World\Azeroth\Elwynn\PassiveDoodads\GrapeBuckets\GrapeBucket02.m2']
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [3.0, 4.5]
+spacing = 5.0
+gap = 0.5
+count = 18
+jitter = 0.2
+tilt = 0.15
+topple = 0.3
+topple_lift = 0.15
+models = ['World\Azeroth\Elwynn\PassiveDoodads\jugs\jug01.m2', 'World\Azeroth\Elwynn\PassiveDoodads\jugs\jug02.m2', 'World\Generic\Human\Passive Doodads\Bottles\Bottle01.m2', 'World\Generic\Human\Passive Doodads\Bottles\GreenBottle01.m2', 'World\Azeroth\Elwynn\PassiveDoodads\jugs\jug02.m2', 'World\Generic\Human\Passive Doodads\Mugs\Stein01.m2', 'World\Generic\Human\Passive Doodads\Goblets\Goblet02.m2']
+# Hay for the cart, in piles that were meant to be neat.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [0.0, -2.0]
+spacing = 14.0
+gap = 3.0
+count = 26
+jitter = 0.12
+models = ['World\Generic\Human\Passive Doodads\HayPiles\ShadowfangHayPile02.m2', 'World\Generic\Human\Passive Doodads\HayPiles\ShadowfangHayPile01.m2', 'World\Generic\Human\Passive Doodads\HayPiles\ShadowfangHayPile02.m2']
+[[scenes.items]]
+arrangement = 'scatter'
+offset = [0.0, 0.0]
+spacing = 9.0
+count = 14
+jitter = 0.1
+models = ['World\Azeroth\Westfall\PassiveDoodads\HayStack\WestFallHayStack01.m2', 'World\Azeroth\Westfall\PassiveDoodads\HayStack\WestFallHayStack02.m2', 'World\Azeroth\Duskwood\PassiveDoodads\DuskwoodHaystack\DuskwoodHayStack.m2']
+[[scenes.items]]
+arrangement = 'scatter'
+offset = [8.0, -6.0]
+spacing = 7.0
+count = 2
+model = 'World\Azeroth\Westfall\PassiveDoodads\HayWagon\WestfallHayWagon.m2'
+# The stomping of the grapes has left its mark: one boot, no owner.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [5.5, 2.5]
+spacing = 0.2
+count = 1
+scale = 1.1
+tilt = 0.3
+model = 'World\Generic\Human\Passive Doodads\Clothing\BootsLeatherBrown01.m2'
+
+# --- The Riverpaw camp: what the gnolls took --------------------------------------------
+
+[[scenes]]
+name = "Riverpaw camp"
+anchor = [-9598, 250, 48]
+# The cooking fire, ringed with the feast and whoever was too slow to leave it.
+[[scenes.items]]
+arrangement = 'cluster'
+spacing = 0.2
+count = 1
+model = 'World\Azeroth\Elwynn\PassiveDoodads\Campfire\ElwynnCampfire.m2'
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [0.0, 0.0]
+spacing = 5.0
+gap = 0.4
+count = 26
+jitter = 0.2
+tilt = 0.2
+topple = 0.2
+topple_lift = 0.1
+models = ['World\Generic\PassiveDoodads\Furniture\Refuse\Bone01.m2', 'World\Generic\PassiveDoodads\Furniture\Refuse\Bone02.m2', 'World\Azeroth\Elwynn\PassiveDoodads\BattleGladeSkullHuman1\BattleGladeSkullHuman1.m2', 'World\Azeroth\Elwynn\PassiveDoodads\BattleGladeSkullOrc1\BattleGladeSkullOrc1.m2', 'World\Generic\Orc\Passive Doodads\Mugs\OrcMug01.m2', 'World\Generic\Human\Passive Doodads\Mugs\Stein01.m2', 'World\Generic\Human\Passive Doodads\Food&Utensils\Haunch.m2', 'World\Generic\Human\Passive Doodads\Food&Utensils\TurkeyLeg.m2', 'World\Generic\Human\Passive Doodads\Food\bread01.m2', 'World\Generic\Orc\Passive Doodads\Bottles\OrcBottle01.m2']
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [0.0, 0.0]
+spacing = 7.0
+gap = 0.8
+count = 14
+jitter = 0.15
+tilt = 0.3
+topple = 0.3
+topple_lift = 0.2
+models = ['World\Generic\PassiveDoodads\Weapons\SkullClub01.m2', 'World\Generic\PassiveDoodads\Weapons\spiked_club01.m2', 'World\Generic\PassiveDoodads\Weapons\knotted_club01.m2', 'World\Generic\PassiveDoodads\Weapons\BoneClub01.m2', 'World\Generic\PassiveDoodads\Weapons\flint_club01.m2', 'World\Generic\PassiveDoodads\Weapons\wicker_shield.m2', 'World\Generic\PassiveDoodads\Weapons\bone_shield.m2', 'World\Generic\Orc\Passive Doodads\Weapons\OrcAxe01.m2']
+# Hogger's table, laid for one.
+[[scenes.items]]
+arrangement = 'table-set'
+offset = [4.0, -3.0]
+table = 'World\Generic\Orc\Passive Doodads\Tables\OrcTable01.m2'
+surface = 0.85
+spacing = 0.75
+gap = 0.4
+count = 5
+models = ['World\Generic\Human\Passive Doodads\Food\RoastBoarPlatter.m2', 'World\Generic\Orc\Passive Doodads\Mugs\OrcMug01.m2', 'World\Generic\Orc\Passive Doodads\Bottles\OrcBottle01.m2', 'World\Generic\Human\Passive Doodads\Food&Utensils\Haunch.m2', 'World\Generic\Human\Passive Doodads\Mugs\Mug02.m2']
+scale = 0.55
+# The loot: Stormwind crates, Alliance weapon crates, Westfall barrels. All of it stolen.
+[[scenes.items]]
+arrangement = 'heap'
+offset = [-9.0, -5.0]
+spacing = 6.5
+step = 1.3
+gap = 3.0
+tilt = 0.1
+topple = 0.2
+topple_lift = 0.8
+count = 24
+scale = 2.0
+jitter = 0.12
+models = ['World\Generic\Human\Passive Doodads\Crates\StormwindCrate01.m2', 'World\Generic\PassiveDoodads\WeaponCrates\WeaponCrateAllianceSword.m2', 'World\Generic\PassiveDoodads\WeaponCrates\WeaponCrateAllianceSwordOpen.m2', 'World\Generic\Orc\Passive Doodads\BarrelsandCrates\OrcCrate06.m2', 'World\Generic\Orc\Passive Doodads\BarrelsandCrates\OrcCrate08.m2', 'World\Azeroth\Westfall\PassiveDoodads\Barrel\WestFallBarrel01.m2', 'World\Generic\Orc\Passive Doodads\BarrelsandCrates\OrcBarrel03.m2', 'World\Generic\PassiveDoodads\WeaponCrates\WeaponCrateHordeAxe.m2']
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [8.0, 6.0]
+spacing = 12.0
+gap = 2.4
+count = 34
+jitter = 0.1
+topple = 0.35
+topple_lift = 0.35
+models = ['World\Generic\PassiveDoodads\Barrel\BrokenBarrel01.m2', 'World\Generic\PassiveDoodads\Barrel\BrokenBarrel02.m2', 'World\Generic\PassiveDoodads\Barrel\BrokenBarrel02.m2', 'World\Generic\Orc\Passive Doodads\BarrelsandCrates\OrcCrateBroken01.m2', 'World\Generic\Orc\Passive Doodads\BarrelsandCrates\OrcCrateBroken02.m2', 'World\Generic\Orc\Passive Doodads\BarrelsandCrates\OrcCrateBroken03.m2']
+# Stolen wagons, parked where the thieves ran out of road; hay for the horses.
+[[scenes.items]]
+arrangement = 'ring'
+spacing = 25.0
+wobble = 5.0
+count = 9
+jitter = 0.1
+models = ['World\Azeroth\Duskwood\PassiveDoodads\DuskwoodHaywagon\DuskwoodHayWagon.m2', 'World\Azeroth\Westfall\PassiveDoodads\HayWagon\WestfallHayWagon.m2', 'World\Azeroth\Duskwood\PassiveDoodads\DuskwoodHaywagon\DuskwoodHayWagon.m2']
+[[scenes.items]]
+arrangement = 'ring'
+spacing = 37.0
+wobble = 5.0
+count = 10
+models = ['World\Generic\Orc\Passive Doodads\Wagons\OrcWagon05.m2', 'World\Generic\Orc\Passive Doodads\Wagons\OrcWagon05.m2', 'World\Azeroth\Westfall\PassiveDoodads\BrokenCart\BrokenCart.m2', 'World\Generic\Orc\Passive Doodads\Wagons\OrcWagon05.m2', 'World\Azeroth\Westfall\PassiveDoodads\BrokenCart\BrokenCart.m2', 'World\Generic\Orc\Passive Doodads\Wagons\OrcWagon05.m2', 'World\Generic\Orc\Passive Doodads\Wagons\OrcWagon05.m2', 'World\Azeroth\Westfall\PassiveDoodads\BrokenCart\BrokenCart.m2']
+
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-3.0, 4.0]
+spacing = 22.0
+gap = 6.0
+count = 24
+jitter = 0.1
+models = ['World\Azeroth\Westfall\PassiveDoodads\HayStack\WestFallHayStack01.m2', 'World\Azeroth\Westfall\PassiveDoodads\HayStack\WestFallHayStack02.m2', 'World\Azeroth\Duskwood\PassiveDoodads\DuskwoodHaystack\DuskwoodHayStack.m2']
+
+# --- Trails: the way between scenes is also a story -----------------------------------
+
+[[trails]]
+name = 'Supper to market'
+from = [-9450, 60, 57]
+to = [-9490, 72, 57]
+spacing = 2.0
+wobble = 2.0
+clump = 0.25
+scale = 1.1
+models = ['World\Generic\Human\Passive Doodads\Food&Utensils\TurkeyLeg.m2', 'World\Generic\Human\Passive Doodads\Food&Utensils\TurkeyLeg.m2', 'World\Generic\Human\Passive Doodads\Mugs\Stein01.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Apple.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Orange.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Plate.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Pear.m2', 'World\Generic\Human\Passive Doodads\Food\BreadLoaf01.m2', 'World\Generic\Human\Passive Doodads\Mugs\Mug02.m2', 'World\Generic\Human\Passive Doodads\Food&Utensils\Haunch.m2']
+
+[[trails]]
+name = 'Household errand'
+from = [-9450, 60, 57]
+to = [-9385, 60, 60]
+spacing = 3.2
+wobble = 2.5
+variance = 0.5
+models = ['World\Generic\Human\Passive Doodads\Crates\ReplaceCrate02.m2', 'World\Generic\Human\Passive Doodads\Crates\ReplaceCrate03.m2', 'World\Generic\Human\Passive Doodads\Sacks\PlaguedGrainSack01.m2', 'World\Generic\Human\Passive Doodads\Buckets\bucket.m2', 'World\Generic\PassiveDoodads\Barrel\Barrel01.m2', 'World\Generic\Human\Passive Doodads\Clothing\FoldedShirtBrown.m2', 'World\Azeroth\Elwynn\PassiveDoodads\jugs\jug01.m2', 'World\Generic\Human\Passive Doodads\Crates\ReplaceCrate01.m2']
+
+[[trails]]
+name = 'North road to the market'
+from = [-9407, 68, 58]
+to = [-9470, 78, 57]
+spacing = 4.0
+wobble = 3.0
+variance = 0.5
+clump = 0.2
+models = ['World\Azeroth\Westfall\PassiveDoodads\Crate\WestFallCrate.m2', 'World\Generic\PassiveDoodads\Crate02\Crate02.m2', 'World\Generic\Orc\Passive Doodads\BarrelsandCrates\OrcBarrel03.m2', 'World\Generic\Orc\Passive Doodads\BarrelsandCrates\OrcCrate08.m2', 'World\Generic\Human\Passive Doodads\firewood\FirewoodPile01.m2', 'World\Generic\Human\Passive Doodads\Buckets\bucket.m2', 'World\Generic\Human\Passive Doodads\Sacks\PlaguedGrainSack01.m2', 'World\Azeroth\Elwynn\PassiveDoodads\jugs\jug02.m2', 'World\Generic\Human\Passive Doodads\BeerKegs\BeerKeg01.m2', 'World\Generic\Human\Passive Doodads\Crates\ReplaceCrate01.m2']
+
+[[trails]]
+name = 'Market to the smithy'
+from = [-9500, 67, 57]
+to = [-9462, 123, 59]
+spacing = 5.0
+wobble = 3.0
+variance = 0.5
+models = ['World\Azeroth\Westfall\PassiveDoodads\Barrel\WestFallBarrel01.m2', 'World\Generic\Human\Passive Doodads\Buckets\bucket.m2', 'World\Generic\Orc\Passive Doodads\Jugs\OrcJug01.m2', 'World\Generic\Human\Passive Doodads\Crates\StormwindCrate01.m2', 'World\Generic\Human\Passive Doodads\Crates\CrateGrain01.m2', 'World\Generic\Human\Passive Doodads\Sacks\PlaguedGrainSack02.m2']
+
+[[trails]]
+name = 'Smithy to the cart'
+from = [-9462, 123, 59]
+to = [-9522, 102, 58]
+spacing = 4.0
+wobble = 3.0
+variance = 0.5
+models = ['World\Goober\G_Pumpkin_01.m2', 'World\Goober\G_Pumpkin_03.m2', 'World\Azeroth\Westfall\PassiveDoodads\ButterChurner\ButterChurner.m2', 'World\Generic\Human\Passive Doodads\Benches\ShadowfangBench02.m2', 'World\Generic\Human\Passive Doodads\Tables\ShadowfangTable02.m2', 'World\Generic\PassiveDoodads\Barrel\BrokenBarrel01.m2', 'World\Generic\Human\Passive Doodads\WoodenDummies\StormWindWoodenDummy01.m2', 'World\Azeroth\Elwynn\PassiveDoodads\Haystacks\haystack02.m2', 'World\Goober\G_Keg.m2', 'World\Generic\Human\Passive Doodads\firewood\FirewoodPile03.m2', 'World\Generic\Human\Passive Doodads\Crates\StormwindCrate01.m2']
+
+[[trails]]
+name = 'Cart to the woodcutters'
+from = [-9522, 102, 58]
+to = [-9550, 140, 60]
+spacing = 5.0
+wobble = 3.0
+variance = 0.5
+models = ['World\Azeroth\Westfall\PassiveDoodads\Barrel\WestFallBarrel01.m2', 'World\Generic\Human\Passive Doodads\Buckets\bucket.m2', 'World\Azeroth\Elwynn\PassiveDoodads\jugs\jug01.m2', 'World\Azeroth\Elwynn\PassiveDoodads\Jars\Jar02.m2', 'World\Generic\Human\Passive Doodads\Crates\StormwindCrate01.m2', 'World\Generic\Human\Passive Doodads\Sacks\PlaguedGrainSack02.m2', 'World\Generic\Human\Passive Doodads\firewood\FirewoodPile03.m2', 'World\Generic\Human\Passive Doodads\PeasantLumber\PeasantLumber01.m2']
+
+[[trails]]
+name = 'Woodcutters to the roadside camp'
+from = [-9550, 140, 60]
+to = [-9568, 185, 54]
+spacing = 6.0
+wobble = 3.5
+variance = 0.5
+clump = 0.2
+models = ['World\Generic\Human\Passive Doodads\firewood\FirewoodPile03.m2', 'World\Generic\Human\Passive Doodads\firewood\FirewoodPile01.m2', 'World\Generic\PassiveDoodads\Barrel\BrokenBarrel02.m2', 'World\Generic\Human\Passive Doodads\firewood\FirewoodPile03.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanAxe02.m2']
+
+
+[[trails]]
+name = 'Roadside camp to Riverpaw'
+from = [-9568, 185, 54]
+to = [-9600, 260, 48]
+spacing = 6.0
+wobble = 3.0
+variance = 0.5
+clump = 0.2
+models = ['World\Azeroth\Westfall\PassiveDoodads\TreeStumps\WestFallTreeStump02.m2', 'World\Generic\PassiveDoodads\Barrel\BrokenBarrel02.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanAxe02.m2', 'World\Generic\Human\Passive Doodads\firewood\FirewoodPile01.m2', 'World\Generic\Human\Passive Doodads\Crates\CrateGrain01.m2', 'World\Generic\PassiveDoodads\Barrel\BrokenBarrel01.m2', 'World\Generic\Human\Passive Doodads\HayPiles\ShadowfangHayPile02.m2']
+
+[[trails]]
+name = 'Farm turnoff'
+from = [-9550, 140, 60]
+to = [-9760, 300, 40]
+spacing = 10.0
+wobble = 4.0
+variance = 0.5
+models = ['World\Generic\PassiveDoodads\Barrel\BrokenBarrel01.m2', 'World\Generic\Human\Passive Doodads\HayPiles\ShadowfangHayPile02.m2', 'World\Azeroth\Duskwood\PassiveDoodads\Straw\DuskwoodStraw02.m2', 'World\Goober\G_Pumpkin_01.m2', 'World\Generic\Human\Passive Doodads\HayPiles\ShadowfangHayPile01.m2']
+
+[[trails]]
+name = 'Stonefield approach'
+from = [-9760, 300, 40]
+to = [-9840, 350, 37]
+spacing = 7.0
+wobble = 3.0
+variance = 0.5
+models = ['World\Azeroth\Elwynn\PassiveDoodads\Haystacks\haystack02.m2', 'World\Azeroth\Duskwood\PassiveDoodads\Bush\Pumpkin01.m2', 'World\Goober\G_Pumpkin_02.m2', 'World\Azeroth\Elwynn\PassiveDoodads\Haystacks\haystack02.m2', 'World\Generic\PassiveDoodads\Misc\WheelBarrow\CaveMineWheelbarrow01.m2']
+
+[[trails]]
+name = 'Southern harvest road'
+from = [-9840, 350, 37]
+to = [-9920, 80, 33]
+spacing = 10.0
+wobble = 4.0
+variance = 0.5
+models = ['World\Generic\Human\Passive Doodads\HayPiles\ShadowfangHayPile02.m2', 'World\Generic\Human\Passive Doodads\HayPiles\ShadowfangHayPile01.m2', 'World\Generic\PassiveDoodads\Misc\WheelBarrow\CaveMineWheelbarrow01.m2', 'World\Azeroth\Duskwood\PassiveDoodads\Straw\DuskwoodStraw02.m2', 'World\Generic\Human\Passive Doodads\HayPiles\ShadowfangHayPile02.m2']
+
+# Critters and farm stock notice the ball, then bolt once it can roll them up, at a speed it can
+# always catch (creatures.rs). Cows only stare, and the bears ignore it; the gnolls and Hogger are hostile.
+[[herds]]
+species = 'Chicken'
+at = [-9442, 54, 57]
+radius = 6
+count = 14
+fit = 0.35
+behaviour = 'skittish'
+model = 'Creature\Chicken\Chicken.m2'
+
+[[herds]]
+species = 'Rabbit'
+at = [-9385, 60, 60]
+radius = 12
+count = 12
+fit = 0.48
+behaviour = 'skittish'
+model = 'Creature\Rabbit\Rabbit.m2'
+
+[[herds]]
+species = 'Sheep'
+at = [-9550, 140, 60]
+radius = 16
+count = 24
+fit = 0.8
+behaviour = 'skittish'
+model = 'Creature\Sheep\Sheep.m2'
+
+[[herds]]
+species = 'Cow'
+at = [-9840, 350, 37]
+radius = 20
+count = 24
+fit = 1.2
+behaviour = 'passive'
+model = 'Creature\Cow\Cow.m2'
+
+[[herds]]
+species = 'Farm horse'
+at = [-9920, 80, 33]
+radius = 20
+count = 22
+fit = 1.8
+behaviour = 'skittish'
+model = 'Creature\RidingHorse\RidingHorse.m2'
+
+[[herds]]
+species = 'Forest Bear'
+at = [-9580, 205, 53]
+radius = 22
+count = 28
+fit = 2.3
+behaviour = 'passive'
+display = 1006
+
+[[herds]]
+species = 'Riverpaw Gnoll'
+at = [-9600, 260, 48]
+radius = 30
+count = 30
+fit = 2.8
+behaviour = 'hostile'
+display = 175
+
+[[herds]]
+species = 'Hogger'
+at = [-9600, 260, 48]
+radius = 0
+count = 1
+fit = 4
+behaviour = 'hostile'
+display = 384
+
+[[scenes]]
+name = 'Stonefield open harvest gate - bypass both ends'
+anchor = [-9822, 350, 37]
+yaw = 0
+[[scenes.items]]
+model = 'World\Azeroth\Duskwood\PassiveDoodads\Fence\DuskWoodFenceSegment.m2'
+count = 3
+arrangement = 'line'
+spacing = 5
+yaw = 0.0
+solid = true
+
+[[scenes]]
+name = 'Maclure wagon gate - bypass east or west'
+anchor = [-9904, 70, 33]
+yaw = 1.57
+[[scenes.items]]
+model = 'World\Azeroth\Duskwood\PassiveDoodads\DuskwoodHaywagon\DuskwoodHayWagon.m2'
+count = 2
+arrangement = 'line'
+spacing = 7
+yaw = 0.0
+solid = true
+
+# --- Inn yard, second course: a steady stream between the first crumbs and the first crates --------
+
+[[scenes]]
+name = "Lodger's trunk"
+anchor = [-9457, 63, 57]
+# His books and shirts came out first, the boots last.
+[[scenes.items]]
+arrangement = 'spill'
+offset = [0.0, 0.0]
+heading = 0.5
+bend = 0.55
+spacing = 1.0
+count = 18
+jitter = 0.18
+tilt = 0.18
+topple = 0.25
+topple_lift = 0.05
+models = ['World\Generic\Human\Passive Doodads\Books\BookSmall01.m2', 'World\Generic\Human\Passive Doodads\Books\BookSmall03.m2', 'World\Generic\Human\Passive Doodads\Books\BookSmall05.m2', 'World\Generic\Human\Passive Doodads\Books\BookMedium01.m2', 'World\Generic\Human\Passive Doodads\Books\BookMedium04.m2', 'World\Generic\Human\Passive Doodads\Books\BookMedium07.m2', 'World\Generic\Human\Passive Doodads\Books\BookSmallOpen02.m2', 'World\Generic\Human\Passive Doodads\Clothing\FoldedShirtBrown.m2', 'World\Generic\Human\Passive Doodads\Clothing\FolderShirtGreen.m2', 'World\Generic\Human\Passive Doodads\Clothing\FoldedPantsBrown.m2', 'World\Generic\Human\Passive Doodads\Clothing\FoldedPantsGrey.m2', 'World\Generic\Human\Passive Doodads\Clothing\BootsLeatherDark.m2', 'World\Generic\Human\Passive Doodads\Clothing\BootsLeatherBrown01.m2', 'World\Generic\Human\Passive Doodads\Clothing\BootsLeatherBlack.m2']
+# The small change that rolled furthest.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [1.5, 1.0]
+spacing = 3.0
+gap = 0.3
+count = 14
+jitter = 0.15
+tilt = 0.15
+models = ['World\Generic\Human\Passive Doodads\Mugs\Mug01.m2', 'World\Generic\Human\Passive Doodads\Mugs\Mug01.m2', 'World\Generic\Human\Passive Doodads\Mugs\MugFoam01.m2', 'World\Generic\Human\Passive Doodads\Mugs\MugFoam01.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Stein.m2', 'World\Generic\Human\Passive Doodads\Food\BreadFrench01.m2', 'World\Generic\Human\Passive Doodads\Food\BreadFrench01.m2', 'World\Azeroth\Elwynn\PassiveDoodads\BattleGladeSkullOrc1\BattleGladeSkullOrc1.m2', 'World\Goober\G_RelicNECup.m2', 'World\Generic\Human\Passive Doodads\Books\BookSmall01.m2']
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-1.0, 2.0]
+spacing = 3.0
+gap = 0.4
+count = 8
+jitter = 0.12
+tilt = 0.15
+topple = 0.2
+topple_lift = 0.05
+models = ['World\Azeroth\Elwynn\PassiveDoodads\jugs\jug01.m2', 'World\Azeroth\Elwynn\PassiveDoodads\jugs\jug02.m2', 'World\Generic\Human\Passive Doodads\Bottles\Bottle01.m2', 'World\Generic\Human\Passive Doodads\Bottles\GreenBottle01.m2', 'World\Azeroth\Elwynn\PassiveDoodads\Jars\Jar01.m2', 'World\Generic\Human\Passive Doodads\Sacks\PlaguedGrainSack02.m2', 'World\Generic\Human\Passive Doodads\Mugs\Stein01.m2', 'World\Generic\Human\Passive Doodads\Statues\BustHM01.m2']
+# A bust of himself, and the cat he was never without.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [3.2, 1.2]
+spacing = 0.2
+count = 1
+yaw = 0.8
+model = 'World\Generic\Human\Passive Doodads\Statues\BustHM02.m2'
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [2.6, 2.0]
+spacing = 0.2
+count = 1
+yaw = 2.4
+model = 'World\Goober\G_RelicNECat.m2'
+
+[[scenes]]
+name = "Greengrocer's barrow"
+anchor = [-9438, 72, 57]
+# The barrow went over at the corner; the fruit rolled toward the crossroads.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [0.0, 0.0]
+spacing = 0.2
+count = 1
+topple = 1.0
+topple_lift = 0.35
+model = 'World\Generic\PassiveDoodads\Misc\WheelBarrow\CaveMineWheelbarrow01.m2'
+[[scenes.items]]
+arrangement = 'spill'
+offset = [0.8, 0.6]
+heading = 0.8
+bend = 0.45
+spacing = 0.9
+count = 24
+jitter = 0.15
+tilt = 0.2
+models = ['World\Generic\PassiveDoodads\Fruits\Fruit_Apple.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Apple.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Apple.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Orange.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Orange.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_OrangeSlice.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Pear.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Pear.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_MelonSlice01.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_MelonSlice02.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_BananaBunch.m2']
+# The big ones, which did not roll.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-2.5, 2.0]
+spacing = 3.0
+gap = 1.5
+count = 3
+jitter = 0.1
+models = ['World\Generic\PassiveDoodads\Fruits\Fruit_Melon.m2', 'World\Goober\G_Pumpkin_01.m2']
+# The grocer's own lunch, and the hens who got to it first.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-1.4, -0.9]
+spacing = 0.2
+count = 1
+topple = 1.0
+topple_lift = 0.2
+model = 'World\Generic\PassiveDoodads\Fruits\FruitBowl_Mixed.m2'
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-1.0, -0.2]
+spacing = 2.2
+count = 3
+species = 'Chicken'
+
+[[scenes]]
+name = "Baker's tipped basket"
+anchor = [-9442, 64, 57]
+# The morning bake, scattered at the sizes a gnome-sized ball can start on.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [0.0, 0.0]
+spacing = 1.5
+gap = 0.2
+count = 80
+scale = 2.2
+jitter = 0.25
+tilt = 0.15
+models = ['World\Generic\Human\Passive Doodads\Food\BreadLoafHalf.m2', 'World\Generic\Human\Passive Doodads\Food\BreadLoafHalf.m2', 'World\Generic\Human\Passive Doodads\Food\BreadLoaf01.m2', 'World\Generic\Human\Passive Doodads\Food\CheeseWheel01.m2', 'World\Generic\Human\Passive Doodads\Food\CheeseWheel01.m2', 'World\Generic\Human\Passive Doodads\Food\CheeseWheelSwiss01.m2', 'World\Generic\Human\Passive Doodads\Food\CheeseWheelSwiss01.m2', 'World\Generic\Human\Passive Doodads\Food\Muffin01.m2', 'World\Generic\Human\Passive Doodads\Food\Muffin01.m2', 'World\Generic\Human\Passive Doodads\Food\Muffin01.m2', 'World\Generic\Human\Passive Doodads\Food\BreadSlice.m2', 'World\Generic\Human\Passive Doodads\Food\BreadSlice.m2', 'World\Generic\Human\Passive Doodads\Food\CheeseWedge01.m2', 'World\Generic\Human\Passive Doodads\Food\CheeseWedge01.m2', 'World\Generic\Human\Passive Doodads\Food\Pie01.m2']
+# The same bake at honest sizes, for a ball that has had its first mouthfuls.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-1.0, 1.0]
+spacing = 3.0
+gap = 0.25
+count = 18
+scale = 3.2
+jitter = 0.25
+tilt = 0.15
+models = ['World\Generic\Human\Passive Doodads\Food\BreadLoaf01.m2', 'World\Generic\Human\Passive Doodads\Food\BreadLoaf01.m2', 'World\Generic\Human\Passive Doodads\Food\BreadLoaf01.m2', 'World\Generic\Human\Passive Doodads\Food\Pie01.m2', 'World\Generic\Human\Passive Doodads\Food\Pie01.m2', 'World\Generic\Human\Passive Doodads\Food\Pie01.m2', 'World\Generic\Human\Passive Doodads\Food\BreadLoafHalf.m2', 'World\Generic\Human\Passive Doodads\Food\BreadLoafHalf.m2', 'World\Generic\Human\Passive Doodads\Food\CheeseWheel01.m2', 'World\Generic\Human\Passive Doodads\Food\CheeseWheel01.m2', 'World\Generic\Human\Passive Doodads\Food\CheeseWheelSwiss01.m2', 'World\Generic\Human\Passive Doodads\Food\CheeseWheelSwiss01.m2', 'World\Generic\Human\Passive Doodads\Food\CheeseWedge01.m2', 'World\Generic\Human\Passive Doodads\Food\BreadSlice.m2']
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [1.5, -1.5]
+spacing = 3.5
+gap = 0.3
+count = 8
+scale = 1.35
+jitter = 0.15
+tilt = 0.15
+models = ['World\Generic\Human\Passive Doodads\Food\BreadFrench01.m2', 'World\Generic\Human\Passive Doodads\Food\BreadFrench01.m2', 'World\Generic\Human\Passive Doodads\Food\BreadFrench01.m2', 'World\Generic\Human\Passive Doodads\Mugs\Mug02.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Plate.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Bowl.m2']
+# The basket itself.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-2.4, 1.4]
+spacing = 1.6
+gap = 1.3
+count = 2
+topple = 1.0
+topple_lift = 0.3
+models = ['World\Generic\Human\Passive Doodads\Crates\ReplaceCrate02.m2', 'World\Generic\Human\Passive Doodads\Crates\ReplaceCrate03.m2']
+# The baguette that got away.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-3.4, -1.2]
+spacing = 0.2
+count = 1
+scale = 1.6
+yaw = 0.3
+model = 'World\Generic\Human\Passive Doodads\Food\bread01.m2'
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [0.5, 0.4]
+spacing = 2.6
+count = 3
+species = 'Chicken'
+
+[[scenes]]
+name = "Guards' picnic"
+anchor = [-9428, 80, 57]
+# Laid for a banquet, on a table meant for four.
+[[scenes.items]]
+arrangement = 'table-set'
+offset = [0.0, 0.0]
+spacing = 0.7
+gap = 0.3
+count = 8
+scale = 0.5
+jitter = 0.1
+table = 'World\Azeroth\Elwynn\PassiveDoodads\Tables\RoundTable\RoundTable.m2'
+surface = 0.95
+models = ['World\Generic\Human\Passive Doodads\Food\RoastBoarPlatter.m2', 'World\Generic\PassiveDoodads\Fruits\FruitBowl_Mixed.m2', 'World\Generic\PassiveDoodads\Fruits\FruitBowl_Apples.m2', 'World\Generic\Human\Passive Doodads\Goblets\Goblet02.m2', 'World\Generic\Human\Passive Doodads\Goblets\Goblet02.m2', 'World\Generic\Human\Passive Doodads\Mugs\Mug02.m2', 'World\Generic\Human\Passive Doodads\Bottles\Bottle01.m2', 'World\Generic\Human\Passive Doodads\Food\bread01.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Plate.m2']
+# The guards took everything off to be comfortable.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-4.0, 1.5]
+spacing = 3.0
+gap = 0.3
+count = 14
+jitter = 0.12
+tilt = 0.25
+models = ['World\Generic\Human\Passive Doodads\Armor\ArmorHelmGold.m2', 'World\Generic\Human\Passive Doodads\Armor\ArmorHelmTrim.m2', 'World\Generic\Human\Passive Doodads\Armor\ArmorHelmGreen.m2', 'World\Generic\Human\Passive Doodads\Armor\ArmorLeatherHelmBlack.m2', 'World\Generic\Human\Passive Doodads\Armor\ArmorBreastplateBlue.m2', 'World\Generic\Human\Passive Doodads\Armor\ArmorBreastplateGold.m2', 'World\Generic\Human\Passive Doodads\Armor\ArmorShoulderGold.m2', 'World\Generic\Human\Passive Doodads\Armor\ArmorBracerBlue.m2', 'World\Generic\Human\Passive Doodads\Armor\ArmorLegPlateSilver.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanMace01.m2']
+# Crates stacked to reach the table.
+[[scenes.items]]
+arrangement = 'heap'
+offset = [2.4, 0.2]
+spacing = 1.3
+gap = 0.9
+step = 0.5
+count = 6
+tilt = 0.08
+models = ['World\Generic\Human\Passive Doodads\Crates\ReplaceCrate02.m2', 'World\Generic\Human\Passive Doodads\Crates\ReplaceCrate02.m2', 'World\Generic\Human\Passive Doodads\Crates\ReplaceCrate02.m2', 'World\Generic\Human\Passive Doodads\Crates\ReplaceCrate03.m2', 'World\Generic\Human\Passive Doodads\Crates\ReplaceCrate03.m2', 'World\Generic\Human\Passive Doodads\Crates\ReplaceCrate01.m2']
+# What fell off it.
+[[scenes.items]]
+arrangement = 'spill'
+offset = [1.0, 1.4]
+heading = 1.9
+bend = 0.5
+spacing = 0.9
+count = 14
+jitter = 0.12
+tilt = 0.2
+models = ['World\Generic\PassiveDoodads\Fruits\Fruit_Apple.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Apple.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Orange.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_Pear.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_MelonSlice02.m2', 'World\Generic\Human\Passive Doodads\Food\BreadFrench01.m2', 'World\Generic\Human\Passive Doodads\Mugs\Mug01.m2', 'World\Generic\Human\Passive Doodads\Mugs\Stein01.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Plate.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Bowl.m2', 'World\Generic\Human\Passive Doodads\Food&Utensils\TurkeyLeg.m2']
+# Someone brought an apple-bobbing barrel to a picnic.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-2.0, -4.5]
+spacing = 0.2
+count = 1
+yaw = 0.4
+model = 'World\Goober\G_AppleBob_01.m2'
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [4.5, 3.5]
+spacing = 0.2
+count = 1
+yaw = 1.1
+model = 'World\Goober\G_Watermelon.m2'
+
+# The crossroads itself: bits and bobs underfoot at the sizes that follow the first crumbs.
+[[scenes]]
+name = "Crossroads litter"
+anchor = [-9450, 60, 57]
+[[scenes.items]]
+arrangement = 'scatter'
+offset = [0.0, 0.5]
+spacing = 1.7
+count = 36
+jitter = 0.15
+tilt = 0.2
+models = ['World\Generic\Human\Passive Doodads\Mugs\Mug01.m2', 'World\Generic\Human\Passive Doodads\Mugs\MugFoam01.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Stein.m2', 'World\Generic\Human\Passive Doodads\Food\BreadFrench01.m2', 'World\Azeroth\Elwynn\PassiveDoodads\BattleGladeSkullOrc1\BattleGladeSkullOrc1.m2', 'World\Goober\G_RelicNECup.m2', 'World\Generic\Human\Passive Doodads\Books\BookSmall01.m2', 'World\Generic\Human\Passive Doodads\Books\BookSmall03.m2', 'World\Generic\Human\Passive Doodads\Books\BookSmall05.m2', 'World\Generic\PassiveDoodads\Fruits\Fruit_OrangeSlice.m2', 'World\Azeroth\Elwynn\PassiveDoodads\Jars\Jar03.m2', 'World\Azeroth\Westfall\PassiveDoodads\Utensils\Plate.m2']
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-2.0, 2.0]
+spacing = 0.2
+count = 1
+yaw = 1.4
+model = 'World\Generic\Human\Passive Doodads\Clothing\BootsLeatherBlack.m2'
+
+# --- Southwest road: the mid-size meals the road was missing ---------------------------------------
+
+[[scenes]]
+name = 'Broken-down cart'
+anchor = [-9519, 97, 58]
+# The axle went at the top of the rise. The cart is a landmark for later.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [13.0, 4.0]
+spacing = 0.2
+count = 1
+yaw = 2.2
+model = 'World\Azeroth\Westfall\PassiveDoodads\BrokenCart\BrokenCart.m2'
+# The wheel that did it.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [9.5, -1.5]
+spacing = 0.2
+count = 1
+topple = 1.0
+topple_lift = 0.3
+model = 'World\Generic\Human\Passive Doodads\BallistaRuins\BallistaWheel01.m2'
+# Cargo, thrown clear.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-1.0, 0.0]
+spacing = 9.0
+gap = 2.6
+count = 20
+jitter = 0.1
+tilt = 0.1
+topple = 0.3
+topple_lift = 0.25
+models = ['World\Azeroth\Westfall\PassiveDoodads\Crate\WestFallCrate.m2', 'World\Generic\PassiveDoodads\Crate02\Crate02.m2', 'World\Goober\G_Crate02.m2', 'World\Generic\Orc\Passive Doodads\BarrelsandCrates\OrcBarrel03.m2', 'World\Generic\Orc\Passive Doodads\BarrelsandCrates\OrcBarrel04.m2', 'World\Generic\Orc\Passive Doodads\BarrelsandCrates\OrcCrate08.m2', 'World\Generic\Orc\Passive Doodads\BarrelsandCrates\OrcCrate09.m2', 'World\Generic\Human\Passive Doodads\Food\FishPlatter01.m2']
+# The heavier things went further down the hill.
+# What the farmhand loaded last: pumpkins, a churn, a bench for the drive home.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-2.0, 3.0]
+spacing = 8.0
+gap = 2.6
+count = 12
+jitter = 0.1
+tilt = 0.1
+topple = 0.2
+topple_lift = 0.2
+models = ['World\Goober\G_Pumpkin_01.m2', 'World\Goober\G_Pumpkin_01.m2', 'World\Goober\G_Pumpkin_02.m2', 'World\Goober\G_Pumpkin_03.m2', 'World\Azeroth\Elwynn\PassiveDoodads\Haystacks\haystack02.m2', 'World\Azeroth\Elwynn\PassiveDoodads\Haystacks\haystack02.m2', 'World\Azeroth\Westfall\PassiveDoodads\ButterChurner\ButterChurner.m2', 'World\Generic\Human\Passive Doodads\Tables\ShadowfangTable02.m2', 'World\Generic\Human\Passive Doodads\Benches\ShadowfangBench02.m2', 'World\Generic\PassiveDoodads\Barrel\BrokenBarrel01.m2', 'World\Generic\Human\Passive Doodads\WoodenDummies\StormWindWoodenDummy01.m2', 'World\Azeroth\Duskwood\PassiveDoodads\Tombs\WoodCross01.m2', 'World\Azeroth\Westfall\PassiveDoodads\RugRacks\RugRack01.m2']
+[[scenes.items]]
+arrangement = 'spill'
+offset = [0.5, 1.0]
+heading = 2.5
+bend = 0.5
+spacing = 3.6
+count = 8
+jitter = 0.1
+topple = 0.3
+topple_lift = 0.25
+models = ['World\Goober\G_Crate01.m2', 'World\Goober\G_CrateAnimal.m2', 'World\Generic\Human\Passive Doodads\Sacks\SackHerbsStack02.m2', 'World\Generic\Human\Passive Doodads\Sacks\SackHerbsStack01.m2', 'World\Goober\G_Pumpkin_01.m2', 'World\Goober\G_Pumpkin_03.m2', 'World\Goober\G_Keg.m2', 'World\Generic\Human\Passive Doodads\OilDrums\oildrum01.m2', 'World\Azeroth\Elwynn\PassiveDoodads\Haystacks\haystack02.m2']
+# The horse has gone home without it.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-2.0, 3.5]
+spacing = 0.2
+count = 1
+yaw = 0.9
+model = 'World\Azeroth\Westfall\PassiveDoodads\Harness\harness.m2'
+
+[[scenes]]
+name = "Traveller's camp"
+anchor = [-9561, 174, 55]
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [0.0, 0.0]
+spacing = 0.2
+count = 1
+model = 'World\Azeroth\Elwynn\PassiveDoodads\Campfire\ElwynnCampfire.m2'
+# Somebody furnished a roadside as though it were a parlour.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [0.0, 0.0]
+spacing = 4.0
+gap = 1.6
+count = 6
+jitter = 0.08
+topple = 0.15
+topple_lift = 0.2
+models = ['World\Generic\Human\Passive Doodads\Chairs\GeneralMedChair01.m2', 'World\Generic\Human\Passive Doodads\Chairs\ShadowfangChair01.m2', 'World\Generic\Human\Passive Doodads\Chairs\ShadowfangChair02.m2', 'World\Generic\Human\Passive Doodads\Benches\ShadowfangBench02.m2', 'World\Generic\Human\Passive Doodads\Tables\InnTableTiny.m2', 'World\Generic\Human\Passive Doodads\Cauldrons\Cauldron.m2']
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-1.5, 1.0]
+spacing = 5.0
+gap = 0.8
+count = 12
+jitter = 0.12
+tilt = 0.15
+topple = 0.2
+topple_lift = 0.15
+models = ['World\Generic\Human\Passive Doodads\Buckets\bucket.m2', 'World\Generic\Gnome\Passive Doodads\Buckets\Gnomebucket05.m2', 'World\Generic\Human\Passive Doodads\Lanterns\GeneralLantern03.m2', 'World\Generic\Human\Passive Doodads\BeerKegs\BeerKeg01.m2', 'World\Generic\Human\Passive Doodads\BeerKegs\BeerKeg02.m2', 'World\Generic\Human\Passive Doodads\Sacks\SackHerbsPeacebloom01.m2', 'World\Azeroth\Elwynn\PassiveDoodads\Shovel\Shovel.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanAxe02.m2', 'World\Generic\Human\Passive Doodads\PeasantLumber\PeasantLumber01.m2', 'World\Generic\Human\Passive Doodads\PeasantLumber\PeasantLumber01.m2']
+# A bedroll, with a four-poster bed.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [4.5, -2.5]
+spacing = 0.2
+count = 1
+yaw = 0.5
+model = 'World\Generic\Human\Passive Doodads\Rugs\StormwindRug02.m2'
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [4.5, -2.5]
+spacing = 0.2
+count = 1
+yaw = 0.5
+model = 'World\Azeroth\Westfall\PassiveDoodads\Furniture\westfallbed01.m2'
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-4.0, -2.0]
+spacing = 2.0
+gap = 1.5
+count = 2
+models = ['World\Generic\Human\Passive Doodads\Globes\Globe01.m2', 'World\Generic\Human\Passive Doodads\Armor\ArmorStand.m2']
+
+[[scenes]]
+name = 'Roadside woodpile'
+anchor = [-9538, 123, 59]
+[[scenes.items]]
+arrangement = 'heap'
+offset = [0.0, 0.0]
+spacing = 2.5
+gap = 0.8
+step = 0.45
+count = 14
+jitter = 0.1
+tilt = 0.08
+models = ['World\Generic\Human\Passive Doodads\PeasantLumber\PeasantLumber01.m2', 'World\Generic\Human\Passive Doodads\PeasantLumber\PeasantLumber01.m2', 'World\Generic\Human\Passive Doodads\PeasantLumber\PeasantLumber01.m2', 'World\Generic\Human\Passive Doodads\firewood\FirewoodPile01.m2', 'World\Generic\Human\Passive Doodads\firewood\FirewoodPile01.m2', 'World\Generic\Human\Passive Doodads\firewood\FirewoodPile03.m2', 'World\Generic\Human\Passive Doodads\firewood\FirewoodPile03.m2']
+# Kindling, and the hay the horses won't miss.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [5.0, 3.0]
+spacing = 5.0
+gap = 2.0
+count = 5
+jitter = 0.1
+models = ['World\Generic\Human\Passive Doodads\HayPiles\ShadowfangHayPile02.m2', 'World\Generic\Human\Passive Doodads\HayPiles\ShadowfangHayPile02.m2', 'World\Generic\Human\Passive Doodads\HayPiles\ShadowfangHayPile01.m2', 'World\Azeroth\Duskwood\PassiveDoodads\Straw\DuskwoodStraw02.m2']
+[[scenes.items]]
+arrangement = 'scatter'
+offset = [-1.5, -2.0]
+spacing = 2.5
+count = 3
+topple = 0.5
+topple_lift = 0.2
+models = ['World\Generic\Human\Passive Doodads\Weapons&Armor\HumanAxe01.m2', 'World\Generic\Human\Passive Doodads\Weapons&Armor\HumanAxe02.m2', 'World\Azeroth\Elwynn\PassiveDoodads\Shovel\Shovel.m2']
+# The one that fought back.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-4.5, 4.0]
+spacing = 0.2
+count = 1
+yaw = 1.0
+model = 'World\Azeroth\Westfall\PassiveDoodads\TreeStumps\WestFallTreeStump01.m2'
+
+# --- Riverpaw approach: a ramp of huts, cages and loot from r 2.7 to 4.3, then Hogger ---------------
+
+[[scenes]]
+name = 'Gnoll outskirts'
+anchor = [-9575, 196, 52]
+# The first of the camp: what a gnoll would put at his door.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [0.0, 0.0]
+spacing = 9.0
+gap = 2.4
+count = 5
+jitter = 0.08
+topple = 0.15
+topple_lift = 0.2
+models = ['World\Azeroth\Westfall\PassiveDoodads\RugRacks\RugRack01.m2', 'World\Azeroth\Westfall\PassiveDoodads\RugRacks\RugRack02.m2', 'World\Generic\Human\Passive Doodads\WeaponRacks\GeneralWeaponrack01.m2', 'World\Generic\Human\Passive Doodads\DogHouses\DogHouse.m2', 'World\Generic\Orc\Passive Doodads\TableCooker\OrcTableCooker01.m2', 'World\Azeroth\Westfall\PassiveDoodads\Harness\harness.m2', 'World\Generic\Human\Passive Doodads\HayPiles\ShadowfangHayPile02.m2', 'World\Generic\Human\Passive Doodads\HayPiles\ShadowfangHayPile02.m2', 'World\Azeroth\Elwynn\PassiveDoodads\BattleGladeWoodSpikes\BattleGladeWoodSpikes.m2', 'World\Azeroth\Elwynn\PassiveDoodads\BattleGladeBanner1\BattleGladeBanner1.m2', 'World\Azeroth\Elwynn\PassiveDoodads\BattleGladeBanner2\BattleGladeBanner2.m2']
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [-3.0, 3.0]
+spacing = 8.0
+gap = 2.4
+count = 3
+jitter = 0.08
+topple = 0.1
+topple_lift = 0.2
+models = ['World\Goober\G_CageBase.m2', 'World\Azeroth\Stranglethorn\ActiveDoodads\Cages\Cage01.m2', 'World\Azeroth\Stranglethorn\ActiveDoodads\Cages\Cage03.m2', 'World\Generic\PassiveDoodads\Hides\HideStack01.m2', 'World\Generic\PassiveDoodads\Hides\HideStack02.m2', 'World\Generic\Orc\Passive Doodads\MeatRacks\RawMeatRack01.m2', 'World\Generic\Human\Passive Doodads\AnimalHeads\StuffedFrenzy.m2', 'World\Generic\Human\Passive Doodads\Banners\ShadowfangBanner01.m2', 'World\Generic\Human\Passive Doodads\Banners\ShadowfangBanner02.m2', 'World\Generic\Human\Passive Doodads\HayPiles\ShadowfangHayPile01.m2']
+# Not a gnoll's. His dog's.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [5.0, -3.0]
+spacing = 0.2
+count = 1
+yaw = 2.0
+model = 'World\Generic\Human\Passive Doodads\DogHouses\DogHouse.m2'
+
+[[scenes]]
+name = 'Gnoll huts'
+anchor = [-9590, 232, 49]
+# Huts, built out of what was lying around.
+[[scenes.items]]
+arrangement = 'ring'
+offset = [0.0, 0.0]
+spacing = 6.5
+count = 3
+jitter = 0.06
+wobble = 1.2
+model = 'World\Azeroth\Duskwood\Buildings\GnollTent\GnollTent03.m2'
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [0.0, 0.0]
+spacing = 7.5
+gap = 2.2
+count = 10
+jitter = 0.08
+topple = 0.1
+topple_lift = 0.2
+models = ['World\Azeroth\Stranglethorn\ActiveDoodads\Cages\Cage01.m2', 'World\Azeroth\Stranglethorn\ActiveDoodads\Cages\Cage02.m2', 'World\Goober\G_Cage02.m2', 'World\Generic\Tauren\Passive Doodads\AnimalCages\AnimalCage04.m2', 'World\Generic\Human\Passive Doodads\AnimalHeads\StuffedBear.m2', 'World\Azeroth\Duskwood\PassiveDoodads\Straw\DuskwoodStraw02.m2', 'World\Generic\PassiveDoodads\Hides\HideStack01.m2', 'World\Generic\PassiveDoodads\Hides\HideStack02.m2', 'World\Generic\PassiveDoodads\TreasurePiles\GoldPilemedium01.m2']
+# Locked in the nearest cage.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [1.5, 0.5]
+spacing = 2.0
+count = 3
+species = 'Chicken'
+
+[[scenes]]
+name = 'Stolen belongings'
+anchor = [-9610, 246, 49]
+# Hogger's haul from Goldshire: furniture, mostly. Somebody was missing a wardrobe.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [0.0, 0.0]
+spacing = 7.0
+gap = 2.0
+count = 14
+jitter = 0.07
+tilt = 0.1
+topple = 0.2
+topple_lift = 0.3
+models = ['World\Generic\Human\Passive Doodads\Wardrobe\DuskwoodWardrobe01.m2', 'World\Generic\Human\Passive Doodads\Wardrobe\DuskwoodWardrobe02.m2', 'World\Azeroth\Westfall\PassiveDoodads\Furniture\westfallbed01.m2', 'World\Generic\Human\Passive Doodads\Desks\FancyDesk01.m2', 'World\Generic\Human\Passive Doodads\Artwork\Painting05.m2', 'World\Generic\Human\Passive Doodads\Artwork\Painting06.m2', 'World\Generic\Human\Passive Doodads\Artwork\Painting10.m2', 'World\Generic\Human\Passive Doodads\Rugs\StormwindRug01.m2', 'World\Generic\Human\Passive Doodads\Tables\ShadowfangTable02.m2', 'World\Generic\Human\Passive Doodads\Chairs\ShadowfangChair01.m2', 'World\Generic\Human\Passive Doodads\Chairs\ShadowfangChair02.m2', 'World\Azeroth\Elwynn\PassiveDoodads\Signs\Shop\HumanInnSign.m2']
+# The Lion's Pride sign: the punchline of the whole raid.
+[[scenes.items]]
+arrangement = 'cluster'
+offset = [2.5, -2.0]
+spacing = 0.2
+count = 1
+yaw = 0.2
+topple = 1.0
+topple_lift = 0.4
+model = 'World\Azeroth\Elwynn\PassiveDoodads\Signs\Shop\HumanInnSign.m2'
+[[scenes.items]]
+arrangement = 'scatter'
+offset = [0.0, 0.0]
+spacing = 2.2
+count = 6
+jitter = 0.1
+tilt = 0.2
+models = ['World\Generic\Human\Passive Doodads\Globes\Globe01.m2', 'World\Generic\Human\Passive Doodads\BookStacks\GeneralBookStackShort01.m2', 'World\Generic\Human\Passive Doodads\Books\BookMedium01.m2', 'World\Generic\Human\Passive Doodads\Books\BookMedium04.m2', 'World\Generic\Human\Passive Doodads\Clothing\BootsLeatherBrown01.m2', 'World\Generic\Human\Passive Doodads\Clothing\BootsLeatherDark.m2', 'World\Generic\Human\Passive Doodads\Clothing\FoldedShirtBrown.m2', 'World\Generic\Human\Passive Doodads\Clothing\FoldedPantsGrey.m2', 'World\Generic\Human\Passive Doodads\Statues\BustHM01.m2']
+

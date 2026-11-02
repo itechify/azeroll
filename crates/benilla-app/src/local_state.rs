@@ -123,6 +123,12 @@ pub(crate) fn saved_variables_path() -> Option<PathBuf> {
     home().map(|h| h.join("saved-variables.lua"))
 }
 
+/// `benilla-config/azeroll-progress.toml`: Azeroll's bests per level (time, size, things rolled
+/// up) and the optional challenges met, written when a run ends. On the page it is `localStorage`.
+pub(crate) fn azeroll_progress_path() -> Option<PathBuf> {
+    home().map(|h| h.join("azeroll-progress.toml"))
+}
+
 /// `benilla-config/addons/<Realm>-<Character>.txt`: the AddOn enable state, per character in the
 /// reference's `AddOns.txt` format (`<AddOnName>: enabled|disabled`), which it writes at the tail
 /// of its UI shutdown (`0x490bd0`). An addon absent from the file is enabled.

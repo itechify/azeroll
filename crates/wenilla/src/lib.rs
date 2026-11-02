@@ -14,10 +14,10 @@ use wasm_bindgen::prelude::*;
 use benilla_app::BuildId;
 
 /// Set the panic hook (so a Rust panic reaches `console.error` with a real message instead of
-/// the browser's bare "unreachable executed"), then hand off to [`benilla_app::run_survivors`]
-/// exactly like the native `warcraft-survivors` shim does — same `BuildId`, same entry point, so
-/// behaviour that differs between the two targets differs inside `benilla_app`, never at this
-/// seam.
+/// the browser's bare "unreachable executed"), then hand off to [`benilla_app::run_web`] (Azeroll,
+/// or Survivors with `?survivors=1`) exactly like the native `azeroll` shim does — same `BuildId`,
+/// same entry point, so behaviour that differs between the two targets differs inside
+/// `benilla_app`, never at this seam.
 #[wasm_bindgen(start)]
 pub fn start() {
     console_error_panic_hook::set_once();
@@ -27,7 +27,7 @@ pub fn start() {
     // did the run exit with?" — that hasn't been decided yet. The native shims' `fn main() ->
     // AppExit` (where the return value IS the process exit code) has no wasm32 equivalent: a
     // browser tab has no exit code for a page to report.
-    benilla_app::run_survivors(BuildId {
+    benilla_app::run_web(BuildId {
         version: env!("CARGO_PKG_VERSION"),
         describe: env!("BENILLA_GIT_DESCRIBE"),
         sha: env!("BENILLA_GIT_SHA"),

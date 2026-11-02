@@ -178,7 +178,7 @@ pub(super) fn refresh_live_display(
 pub(super) fn tick_scale_ease(
     mut commands: Commands,
     time: Res<Time>,
-    mut easing: Query<(Entity, &mut Transform, &mut ScaleEase)>,
+    mut easing: Query<(Entity, &mut Transform, &mut ScaleEase), Without<super::Carried>>,
 ) {
     for (entity, mut tf, mut ease) in &mut easing {
         ease.elapsed += time.delta_secs();

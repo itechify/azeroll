@@ -1,0 +1,47 @@
+[
+  {
+    "uid": 210351,
+    "model": "world\\wmo\\dungeon\\md_goldmine\\md_goldmine_varianta.wmo",
+    "position": [
+      -9833.623062499999,
+      193.51560937500108,
+      29.094337463378906
+    ],
+    "rotation_deg": [
+      0.0,
+      -58.5,
+      0.0
+    ],
+    "tile": "World\\Maps\\Azeroth\\Azeroth_31_50.adt"
+  },
+  {
+    "uid": 71446,
+    "model": "world\\wmo\\dungeon\\md_spidermine\\md_spidermine.wmo",
+    "position": [
+      -9154.650406249999,
+      -594.3886874999989,
+      62.89704895019531
+    ],
+    "rotation_deg": [
+      0.0,
+      8.5,
+      0.0
+    ],
+    "tile": "World\\Maps\\Azeroth\\Azeroth_33_49.adt"
+  },
+  {
+    "uid": 71448,
+    "model": "world\\wmo\\dungeon\\md_goldmine\\md_goldmine.wmo",
+    "position": [
+      -8646.220718749999,
+      -131.72071874999892,
+      91.61771392822266
+    ],
+    "rotation_deg": [
+      0.0,
+      -35.0,
+      0.0
+    ],
+    "tile": "World\\Maps\\Azeroth\\Azeroth_32_48.adt"
+  }
+]

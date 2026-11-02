@@ -205,6 +205,7 @@ mod tests {
     fn blank_placement() -> Placement {
         Placement {
             model: ModelHandle::M2(Default::default()),
+            claimed: false,
             transform: Transform::IDENTITY,
             entities: Vec::new(),
             spawned: true,

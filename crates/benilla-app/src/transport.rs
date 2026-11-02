@@ -573,7 +573,7 @@ fn compose_riders(
             &mut Transform,
             Option<&mut crate::net::RemoteMotion>,
         ),
-        Without<Transport>,
+        (Without<Transport>, Without<crate::entities::Carried>),
     >,
 ) {
     for (rider, mut transform, motion) in &mut riders {
@@ -619,7 +619,11 @@ fn ground_deck_riders(
             Option<&mut crate::net::RemoteMotion>,
             &crate::net::Spline,
         ),
-        (With<TransportRider>, Without<Transport>),
+        (
+            With<TransportRider>,
+            Without<Transport>,
+            Without<crate::entities::Carried>,
+        ),
     >,
 ) {
     /// The probe's reach above and below the seat, the creature clamp's

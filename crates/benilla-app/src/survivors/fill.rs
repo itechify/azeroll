@@ -8,7 +8,7 @@ use bevy::shader::ShaderRef;
 use bevy::ui_render::ui_material::UiMaterial;
 
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
-pub(super) struct FillMaterial {
+pub(crate) struct FillMaterial {
     #[uniform(0)]
     fill: FillUniform,
 }
@@ -50,7 +50,7 @@ impl FillMaterial {
     }
 
     /// From `centre` at the middle to `edge` at the farthest corner.
-    pub(super) fn radial(centre: Color, edge: Color) -> Self {
+    pub(crate) fn radial(centre: Color, edge: Color) -> Self {
         Self {
             fill: FillUniform {
                 a: lin(centre),

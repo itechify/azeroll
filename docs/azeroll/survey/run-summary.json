@@ -1,0 +1,18 @@
+{
+  "runtime_complete": true,
+  "completion_log": "survey: complete, 4355 placements, 14384 terrain samples",
+  "process_exit_code": 143,
+  "process_exit_note": "Capture completed before the timeout terminated the process; clean process shutdown was not observed.",
+  "placements": 4355,
+  "doodads": 4333,
+  "wmos": 22,
+  "unresolved_size_bounds": 0,
+  "terrain_samples": 14384,
+  "bounding_square_lattice_columns": 14641,
+  "unreported_columns": 257,
+  "water_columns": 1417,
+  "overhead_captures": 9,
+  "oblique_captures": 6,
+  "image_limit_width": 1280,
+  "oblique_limitations": "Blacksmith and square are readable; inn, farms, forest-edge and parts of north-road are heavily canopy-obstructed. Use overheads and numeric data for those landmarks."
+}

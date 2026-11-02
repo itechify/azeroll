@@ -83,7 +83,7 @@ pub(crate) struct Scene<'w, 's> {
     index: ResMut<'w, GuidIndex>,
     self_guid: Res<'w, SelfGuid>,
     real: Res<'w, Time<Real>>,
-    transforms: Query<'w, 's, &'static mut Transform>,
+    transforms: Query<'w, 's, &'static mut Transform, Without<crate::entities::Carried>>,
     stores: Query<'w, 's, &'static mut ObjectStore>,
     countdowns: Query<'w, 's, &'static mut crate::items::Countdowns>,
     remote: Query<'w, 's, &'static mut RemoteMotion>,
@@ -457,7 +457,7 @@ fn object_create(
     fields: ObjectFields,
     commands: &mut Commands,
     index: &mut GuidIndex,
-    transforms: &mut Query<&mut Transform>,
+    transforms: &mut Query<&mut Transform, Without<crate::entities::Carried>>,
     stores: &mut Query<&mut ObjectStore>,
     edges: &mut MessageWriter<FieldChanged>,
     names: &NameCache,
@@ -657,7 +657,7 @@ fn object_move(
     orientation: f32,
     commands: &mut Commands,
     index: &GuidIndex,
-    transforms: &mut Query<&mut Transform>,
+    transforms: &mut Query<&mut Transform, Without<crate::entities::Carried>>,
 ) {
     if let Some(&e) = index.0.get(&guid) {
         commands.entity(e).remove::<Spline>();
@@ -677,7 +677,7 @@ fn unit_move(
     index: &GuidIndex,
     self_guid: &SelfGuid,
     remote_motion: &mut Query<&mut RemoteMotion>,
-    transforms: &mut Query<&mut Transform>,
+    transforms: &mut Query<&mut Transform, Without<crate::entities::Carried>>,
     landings: &mut MessageWriter<crate::creature_anim::HardLanding>,
     self_moves: &mut MessageWriter<crate::net::SelfMoveMessage>,
 ) {
@@ -862,7 +862,7 @@ fn monster_move(
     rooted: bool,
     commands: &mut Commands,
     index: &GuidIndex,
-    transforms: &mut Query<&mut Transform>,
+    transforms: &mut Query<&mut Transform, Without<crate::entities::Carried>>,
     riders: &mut Query<&mut crate::transport::TransportRider>,
 ) {
     if let Some(&e) = index.0.get(&guid) {
@@ -1428,7 +1428,7 @@ mod tests {
                 w.run_system_once(
                     move |mut commands: Commands,
                           index: Res<GuidIndex>,
-                          mut transforms: Query<&mut Transform>,
+                          mut transforms: Query<&mut Transform, Without<crate::entities::Carried>>,
                           mut riders: Query<&mut crate::transport::TransportRider>| {
                         monster_move(
                             MOB,
@@ -1484,7 +1484,7 @@ mod tests {
             w.run_system_once(
                 move |mut commands: Commands,
                       index: Res<GuidIndex>,
-                      mut transforms: Query<&mut Transform>,
+                      mut transforms: Query<&mut Transform, Without<crate::entities::Carried>>,
                       mut riders: Query<&mut crate::transport::TransportRider>| {
                     monster_move(
                         MOB,
@@ -1531,7 +1531,7 @@ mod tests {
             w.run_system_once(
                 move |mut commands: Commands,
                       index: Res<GuidIndex>,
-                      mut transforms: Query<&mut Transform>,
+                      mut transforms: Query<&mut Transform, Without<crate::entities::Carried>>,
                       mut riders: Query<&mut crate::transport::TransportRider>| {
                     monster_move(
                         MOB,

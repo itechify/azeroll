@@ -508,3 +508,53 @@ mod tests {
         assert_eq!(at(0), shallow, "row 0 is the shallow endpoint verbatim");
     }
 }
+
+/// Foliage-card textures only; opaque bark sharing a tree model must never be clipped.
+/// Used by both the entity and retained render lanes. A pathless texture is conservative.
+pub fn foliage_texture(texture: &Handle<Image>) -> bool {
+    let Some(path) = texture.path() else {
+        return false;
+    };
+    foliage_path(&path.to_string())
+}
+
+fn foliage_path(path: &str) -> bool {
+    let path = path.to_ascii_lowercase();
+    ["tree", "bush", "leaf", "leaves", "foliage", "canopy"]
+        .iter()
+        .any(|word| path.contains(word))
+        && !["bark", "trunk", "branch"]
+            .iter()
+            .any(|word| path.contains(word))
+}
+
+#[cfg(test)]
+mod foliage_tests {
+    use super::foliage_path;
+
+    #[test]
+    fn elwynn_canopy_pine_and_shrub_atlases_are_foliage() {
+        for path in [
+            "World/Generic/Human/Passive Doodads/StormWind/ElwynnTreeTallCanopy_New01.blp",
+            "Interface/Glues/Models/UI_Human/ElwynnTreeTallComp_01.blp",
+            "Dungeons/TEXTURES/BRIAN/ABBEY/PIINETREE01.BLP",
+            "World/Azeroth/Elwynn/PassiveDoodads/Trees/Stumps/ElwynnShrub09.blp",
+        ] {
+            assert!(foliage_path(path), "{path}");
+        }
+    }
+
+    #[test]
+    fn bark_and_unrelated_cutout_props_are_excluded() {
+        for path in [
+            "world/trees/treebark.blp",
+            "world/tree_trunk.blp",
+            "world/bushbranch.blp",
+            "world/human/fence.blp",
+            "world/human/window.blp",
+            "creature/gnoll/gnoll.blp",
+        ] {
+            assert!(!foliage_path(path), "{path}");
+        }
+    }
+}

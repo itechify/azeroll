@@ -736,6 +736,7 @@ mod tests {
     fn blank_placement(portal_instance: Option<Entity>) -> Placement {
         Placement {
             model: ModelHandle::M2(Default::default()),
+            claimed: false,
             transform: Transform::IDENTITY,
             entities: Vec::new(),
             spawned: true,
