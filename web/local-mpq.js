@@ -13,7 +13,7 @@ async function slice(file, start, length) {
 }
 export async function openChain(files) {
   await (wasm ??= init());
-  for (const name of ['terrain.mpq','patch.mpq','dbc.mpq','model.mpq','texture.mpq']) {
+  for (const name of [...BASE,'patch'].map(n=>n+'.mpq')) {
     if (!files.some(f => f.name.toLowerCase() === name)) throw Error(`Missing ${name}. Select the complete World of Warcraft 1.12.1 (build 5875) Data folder.`);
   }
   const archives = [];
