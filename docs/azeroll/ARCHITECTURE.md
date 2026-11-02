@@ -1,23 +1,21 @@
 # Azeroll architecture
 
 Living record of the major decisions and the outstanding work. Research behind them:
-[engine-survivors.md](engine-survivors.md) (boot, units, camera, HUD, input, sound) and
 [engine-world.md](engine-world.md) (doodads, WMOs, bounds, collision, streaming, performance).
 
 ## Decisions
 
-**D1 — Foundation: a sibling mode in the Azeroth Survivors fork.** This repo is a copy of
-`outthislife/azeroth-survivors-re` at `72048f4` (itself wenilla ⊃ benilla: a from-scratch WoW 1.12.1
-client in Rust + Bevy 0.18 with a wasm/WebGPU build). Survivors already proves the server-less pattern:
+**D1 — Foundation: a server-less mode on the benilla engine.** The engine is wenilla ⊃ benilla: a
+from-scratch WoW 1.12.1 client in Rust + Bevy 0.18 with a wasm/WebGPU build. Azeroll runs it
+server-less, an approach inspired by [Azeroth Survivors](https://github.com/outthislife/azeroth-survivors-re):
 `CaptureMode` turns off FrameXML and the player controller, the net layer runs offline, the client
 boots straight `InWorld`, and local units are dressed by the stock attach/animation systems. Azeroll
-is `crates/benilla-app/src/azeroll/` plus the `crates/azeroll` launcher, mirroring Survivors. The
-history import is pending (D9).
+is `crates/benilla-app/src/azeroll/` plus the `crates/azeroll` launcher.
 
 **D2 — Mode selection lives in `benilla-app/src/lib.rs`.** `run_azeroll` sets `azeroll::ACTIVE`;
-`launch` resolves one mode (`azeroll` wins over `survivors`), sets the start map, disables the
-connection and adds one mode plugin. The wasm entry calls `run_web`, which runs Azeroll unless the
-page passes `?survivors=1`. Native: `cargo azeroll`, which needs `WOW_DATA=wow-data/Data`.
+`launch` then sets the start map, disables the connection and adds the Azeroll plugin. The wasm
+entry calls `run_web`, which runs Azeroll. Native: `cargo azeroll`, which needs
+`WOW_DATA=wow-data/Data`.
 
 **D3 — The ball is three entities.** `Ball` (root, translation only) → `BallSpin` (roll rotation)
 → core mesh plus trophies. `BallState` (resource) is the authority for position, velocity, spin and
@@ -70,7 +68,7 @@ and locks collection out for at least 1.5 s. Props tumble at 4 rad/s and settle 
 rotated box; creatures stay upright and stagger. Both use `Shed`; carried units skip the
 engine's ground clamp during flight. Compound splitting is not implemented.
 
-**D7 — Creatures are local units (Survivors' `NetEntity` + `ObjectStore` adapter).** Real Elwynn
+**D7 — Creatures are local units (a `NetEntity` + `ObjectStore` adapter).** Real Elwynn
 creatures are spawned by display id (Hogger = display 384; rabbits and chickens are resolved from
 `CreatureDisplayInfo` by model path at runtime). A collected unit is re-parented to `BallSpin`.
 Because the net ground clamp and terrain conform treat a unit's local `Transform` as world space,
@@ -104,7 +102,7 @@ offsets from his root) is not reframed for the 0.35 yd Prince he reads as a spec
 
 **D8 — Camera: fixed FOV, distance and pitch follow the radius.** The stock scoped-view system resets
 FOV every frame even under `CaptureMode`, so Azeroll grows the boom distance instead of the FOV.
-Terrain streaming follows the ball through `Player.pos` → `ViewFocus::body`, as in Survivors, and
+Terrain streaming follows the ball through `Player.pos` → `ViewFocus::body`, and
 the far clip grows with the ball within the engine's 177..777 range.
 The boom is at least twice the largest attached radial extent plus the collision radius;
 wall shortening stops outside that extent, and growth cannot leave the lens inside a newly
@@ -175,8 +173,8 @@ the full layout with zeroed cutout rows.
 
 **D9 — Upstream hygiene.** Blizzard data stays out of git (`/wow-data`, fetched from archive.org per
 MPQ). Changes to upstream files are few and generic: the claim seam, `Carried`, and the mode hooks.
-When the network allows, fetch `survivors`, `wenilla` and `benilla` history and make the import a
-real merge, so later upstream syncs keep their ancestry.
+Engine updates come from `wenilla` and `benilla` as real merges, so later syncs keep their
+ancestry.
 
 **D10 — No traps.** Enclosed areas validate entry at doorway clearance plus every
 contained object's additive box volume, independent of order. Exact scaled bbox volumes
@@ -394,7 +392,7 @@ dash keeps the Shift press; `Dash::WindUp` is reserved and not emitted. Full rep
 | `collect.rs` | overlap tests, roll-up and attachment, growth, bumps and shedding, burying |
 | `props.rs` | the claimed-doodad lifecycle: copies, sizes, tombstones |
 | `creatures.rs` | creature spawning, wandering, fleeing and aggro, `Collectible` sizing |
-| `units.rs` | local unit spawn adapter (from Survivors), coordinate helpers |
+| `units.rs` | local unit spawn adapter, coordinate helpers |
 | `npcs.rs`, `goldshire-npcs.toml` | 33-person authored cast, ambient scenes, size reactions, voices and carried animation budget |
 | `hud.rs` | size, timer and count HUD, pickup toasts, banners, results screen |
 | `sfx.rs` | the audio grammar: pickup pops, voices and thumps; touches, cues and the roll; one voice budget |
@@ -512,7 +510,6 @@ rm -f benilla-config/azeroll-progress.toml   # a finished run writes a best time
   screenshots come out black.
 - The world takes about 2 minutes from launch to playable on a cold start (asset loads and pipeline
   warm-up).
-- `?survivors=1` on the web build, or `cargo survivors` natively, still runs Warcraft Survivors.
 
 ## Browser build
 
@@ -533,7 +530,7 @@ tailscale serve --bg --https=8443 http://127.0.0.1:8090
 node scripts/web-smoke.mjs                      # drives Chromium over CDP, output in /tmp/azeroll-web/
 ```
 
-- Open `http://127.0.0.1:8090/`. The page needs WebGPU: `?survivors=1` still selects Survivors.
+- Open `http://127.0.0.1:8090/`. The page needs WebGPU.
 - `web-setup.sh` installs `wasm-bindgen-cli` into `~/.cargo/bin`, replacing any other version there.
 - **Chromium flags on this NVIDIA + Wayland box** (set as the defaults in `scripts/web-smoke.mjs`):
   `--enable-unsafe-webgpu --enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan
@@ -542,8 +539,7 @@ node scripts/web-smoke.mjs                      # drives Chromium over CDP, outp
   without the vsync flags Chromium delivers about one requestAnimationFrame per second to *any*
   WebGPU page and the game looks frozen. Headless loads the world but cannot present it. Launch
   `/usr/lib/chromium/chromium` directly: the omarchy `chromium` wrapper appends its own ozone flag.
-- Cold load to playable is about 1 minute with the data warm in the host. The boot overlay still
-  says "Azeroth Survivors", and two Survivors outfit textures 404 in the console; both are harmless.
+- Cold load to playable is about 1 minute with the data warm in the host.
 - Measured with the native build and a full `cargo` run competing for the CPU: 47 fps idle, 39 fps
   rolling, in a 937x322 window.
 
@@ -634,7 +630,6 @@ cargo-xwin and a static CRT, then packages `~/azeroll-win.zip` (exe, launcher ba
 - [ ] WMO-internal props (inn mugs, candles): claim by `(MODF uid, MODD index)`.
 - [ ] Rolling up WMO buildings (D5 extension), sound feedback, collection log UI.
 - [x] wasm build and browser test (see "Browser build"). Still open: a clean fps number on an idle machine.
-- [ ] Git history merge (D9): `survivors/main` is fetched and equals the copied snapshot `72048f4`.
 
 ## Authored level system
 

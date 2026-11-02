@@ -957,7 +957,7 @@ fn sync_visuals(
 }
 
 /// The terrain streams around the ball in every phase, and the loading screen waits on the ground
-/// under it: published to `Player` as the Survivors hero does (`survivors::hero::drive_hero`).
+/// under it: published to `Player`, which the stock streaming and loading reads follow.
 pub(super) fn publish_focus(ball: Res<BallState>, mut player: ResMut<crate::player::Player>) {
     player.active = true;
     player.detached = false;
@@ -969,7 +969,7 @@ pub(super) fn publish_focus(ball: Res<BallState>, mut player: ResMut<crate::play
 /// Let go of the mouse buttons when the page loses focus or the pointer leaves it. A release that
 /// lands elsewhere (alt-tab mid-drag, a browser or OS popup) never reaches the game, so the button
 /// would read as held and the camera would swing with every move until both buttons were clicked
-/// again. Mirrors `survivors::hero::drop_stray_buttons`.
+/// again.
 fn drop_stray_buttons(
     mut focus: MessageReader<bevy::window::WindowFocused>,
     mut left: MessageReader<bevy::window::CursorLeft>,

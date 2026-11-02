@@ -64,7 +64,7 @@
   // credentials itself sets `window.__wenilla_env = {user, pass, host}` here instead, and the
   // client then never reads credentials from the URL (`benilla_app::webenv`).
   // The JavaScript bridge publishes unit snapshots every frame (~1 % of the main thread) and
-  // nothing in survivors reads them, so it stays off unless a `?bridge=` link asks for it.
+  // nothing in Azeroll reads them, so it stays off unless a `?bridge=` link asks for it.
   window.__wenilla_env = {
     dev_query_creds: '1',
     ...(new URLSearchParams(location.search).has('bridge') ? {} : { bridge: '0' }),

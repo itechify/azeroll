@@ -1,6 +1,6 @@
-//! The mode's screens, in bevy_ui since FrameXML is off (`survivors::hud` is the model). Play is
-//! nearly wordless, as Katamari's is: the size dial, the clock, the item bubble and the Prince
-//! over the world, with the goal said once at the start and a few contextual moments after it
+//! The mode's screens, in bevy_ui since FrameXML is off. Play is nearly wordless, as Katamari's
+//! is: the size dial, the clock, the item bubble and the Prince over the world, with the goal said
+//! once at the start and a few contextual moments after it
 //! (Hogger is ready; a gentle arrow when he is off screen or the player has stalled). The count,
 //! the requirement and the pickup log live on the pause and results screens. Also the banner and
 //! the ready, pause, results and finale overlays. Everything is built once at startup and shown

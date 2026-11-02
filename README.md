@@ -11,9 +11,9 @@ Hogger.
 
 Azeroll runs on a from-scratch WoW 1.12.1 client in Rust and [Bevy](https://bevy.org): the
 [benilla](https://github.com/samwhosung/benilla) engine, by way of its browser fork
-[wenilla](https://github.com/Arnesen/wenilla) and
-[Azeroth Survivors](https://github.com/outthislife/azeroth-survivors-re), whose server-less game mode
-it is modelled on. There's no server, login or account.
+[wenilla](https://github.com/Arnesen/wenilla). The idea of turning that client into a server-less
+game came from [Azeroth Survivors](https://github.com/outthislife/azeroth-survivors-re). There's no
+server, login or account.
 
 ## Play it
 
@@ -54,8 +54,7 @@ The world takes a minute or two to load the first time.
 - Original music by the project's author in `assets/music/`.
 
 Design notes, decisions and research are in [`docs/azeroll/`](docs/azeroll/), starting with
-[`ARCHITECTURE.md`](docs/azeroll/ARCHITECTURE.md). Survivors still builds from the same tree
-(`cargo survivors`, or `?survivors=1` on the web build).
+[`ARCHITECTURE.md`](docs/azeroll/ARCHITECTURE.md).
 
 ## Legal
 
@@ -65,6 +64,6 @@ Entertainment, Inc.; Katamari Damacy is a trademark of Bandai Namco Entertainmen
 Katamari's ideas, not its code, music or art.
 
 The engine code is licensed under [MIT](LICENSE-MIT) or [Apache 2.0](LICENSE-APACHE), at your
-option. Vendored components under `third_party/` keep their own upstream licenses. Azeroth
-Survivors is a fan game by **Aethus**. `docs/azeroll/data/goldshire-npcs.json` holds factual spawn
-data (ids, coordinates, names) extracted from the GPL-3.0 CMaNGOS classic-db.
+option. Vendored components under `third_party/` keep their own upstream licenses.
+`docs/azeroll/data/goldshire-npcs.json` holds factual spawn data (ids, coordinates, names) extracted
+from the GPL-3.0 CMaNGOS classic-db.

@@ -8,7 +8,7 @@
 //! The M2 is loaded before the unit is spawned so the collection size (its bounding-sphere radius
 //! times the final scale) is known from the first frame, and so Hogger can be scaled to an exact
 //! size. The stock attach and animation systems dress the unit; this module only moves its
-//! [`Transform`] and sets its [`MovementState`], as `survivors::enemies` does.
+//! [`Transform`] and sets its [`MovementState`].
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -332,7 +332,7 @@ fn norm(path: &str) -> String {
 }
 
 /// Read the creature catalog from the archives once they are open, and resolve every species.
-/// Survivors' own catalog is private to `entities`, so this loads a second copy (two small DBCs).
+/// The stock catalog is private to `entities`, so this loads a second copy (two small DBCs).
 fn resolve_roster(
     mut cat: ResMut<Catalog>,
     assets: Option<Res<WorldAssets>>,

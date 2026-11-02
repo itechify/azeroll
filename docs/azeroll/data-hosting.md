@@ -2,7 +2,7 @@
 
 The GitHub Pages build (https://itechify.github.io/azeroll/) has no data folder to read from, so
 the WoW 1.12.1 (build 5875, enUS) files it needs are served as plain static files from a public
-Cloudflare R2 bucket, the same way https://wow.aethus.pl serves its `/data/`.
+Cloudflare R2 bucket.
 
 **Legal note.** The files are Blizzard's content. They are hosted on the project owner's own
 Cloudflare R2 account (explicitly approved by them), never in git, and never in the Pages

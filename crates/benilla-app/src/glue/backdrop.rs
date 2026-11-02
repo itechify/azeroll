@@ -175,7 +175,7 @@ pub(crate) fn fit_backdrop_borders(
     mut pieces: Query<(&BackdropPiece, &mut Node, &mut ImageNode)>,
 ) {
     // The glue screens scale by hand under a unit `UiScale`; a screen laid out on the 768-unit
-    // canvas through `UiScale` (Warcraft Survivors) has the scale in `inv` already.
+    // canvas through `UiScale` has the scale in `inv` already.
     let s = super::screen_scale(window.single().ok()) / ui_scale.0.max(1e-3);
     for (mut rig, computed, children) in &mut rigs {
         let size = computed.size();

@@ -14,8 +14,8 @@ use wasm_bindgen::prelude::*;
 use benilla_app::BuildId;
 
 /// Set the panic hook (so a Rust panic reaches `console.error` with a real message instead of
-/// the browser's bare "unreachable executed"), then hand off to [`benilla_app::run_web`] (Azeroll,
-/// or Survivors with `?survivors=1`) exactly like the native `azeroll` shim does — same `BuildId`,
+/// the browser's bare "unreachable executed"), then hand off to [`benilla_app::run_web`] (Azeroll)
+/// exactly like the native `azeroll` shim does — same `BuildId`,
 /// same entry point, so behaviour that differs between the two targets differs inside
 /// `benilla_app`, never at this seam.
 #[wasm_bindgen(start)]

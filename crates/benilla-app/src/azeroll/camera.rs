@@ -1,9 +1,9 @@
 //! The chase camera: behind the ball, framing it the same on screen however big it grows.
 //!
-//! Written the way `survivors::hero::place_camera` is: real time, the `WorldCamera` transform
-//! written in the Input stage (never parented to the ball; the stock camera pose publishing assumes
-//! a root camera), and a fixed field of view. The stock scoped-view system resets the FOV every
-//! frame, so growth is carried by the boom distance and the pitch instead (decision D8).
+//! Real time, the `WorldCamera` transform written in the Input stage (never parented to the ball;
+//! the stock camera pose publishing assumes a root camera), and a fixed field of view. The stock
+//! scoped-view system resets the FOV every frame, so growth is carried by the boom distance and the
+//! pitch instead (decision D8).
 //!
 //! # Scale grammar
 //!
@@ -117,8 +117,8 @@ const SNAP_SECS: f32 = 2.0;
 const FAR_BASE: f32 = 350.0;
 const FAR_PER_RADIUS: f32 = 25.0;
 
-/// The camera's own state. Yaw is the azimuth of the eye around the ball (0 looks toward -Z, as in
-/// Survivors); the rest is smoothed so growth spurts glide.
+/// The camera's own state. Yaw is the azimuth of the eye around the ball (0 looks toward -Z); the
+/// rest is smoothed so growth spurts glide.
 #[derive(Resource)]
 pub(super) struct CamRig {
     /// Temporary orbit offset from the tank heading, radians.

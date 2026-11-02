@@ -10,8 +10,6 @@ use bevy::prelude::*;
 use bevy::render::render_resource::Buffer;
 
 use crate::azeroll::hud_models::HudMaterial;
-use crate::survivors::fill::FillMaterial;
-use crate::survivors::hud::SweepUiMaterial;
 use benilla_assets::materials::{LiquidMaterial, WowModelMaterial};
 use benilla_world::clouds::CloudMaterial;
 use benilla_world::model_render::{
@@ -47,11 +45,8 @@ pub(super) struct WarmLanes<'w> {
     pub(super) images: ResMut<'w, Assets<Image>>,
     /// For the minimap interior composite's tile material, through its production builder.
     ui_quads: ResMut<'w, Assets<crate::ui_pass::UiQuadMaterial>>,
-    /// The in-run UI materials, each registered by its own mode's plugin: `None` in the other
-    /// mode, which never adds that plugin.
+    /// The in-run HUD material, registered by Azeroll's plugin: `None` outside that mode.
     hud: Option<ResMut<'w, Assets<HudMaterial>>>,
-    sweeps: Option<ResMut<'w, Assets<SweepUiMaterial>>>,
-    fills: Option<ResMut<'w, Assets<FillMaterial>>>,
 }
 
 /// A portrait booth camera and its layer. Booths run `Msaa::Off`, so each model pipeline has a
@@ -554,14 +549,6 @@ pub(super) fn spawn_menagerie(
             p: Vec4::ZERO,
             tex: ui_tex.clone(),
         });
-        spawn_ui_lane_rig(commands, mat, &mut count);
-    }
-    if let Some(sweeps) = lanes.sweeps.as_mut() {
-        let mat = sweeps.add(SweepUiMaterial { sweep: 0.0 });
-        spawn_ui_lane_rig(commands, mat, &mut count);
-    }
-    if let Some(fills) = lanes.fills.as_mut() {
-        let mat = fills.add(FillMaterial::radial(Color::NONE, Color::NONE));
         spawn_ui_lane_rig(commands, mat, &mut count);
     }
 

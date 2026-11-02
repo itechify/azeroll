@@ -196,7 +196,7 @@ pub(crate) const HOGGER_SIZE: f32 = 4.0;
 /// `creatures::resolve_roster`).
 #[derive(Debug, Clone)]
 pub(crate) enum Look {
-    /// A `CreatureDisplayInfo` row, as `survivors/data.rs` uses them.
+    /// A `CreatureDisplayInfo` row.
     DisplayId(u32),
     /// An M2 path (`Creature\Rabbit\Rabbit.m2`; the case, slashes and the `.mdx`/`.m2` extension
     /// do not matter): the first display that wears this model and has a skin.

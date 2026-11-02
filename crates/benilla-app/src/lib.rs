@@ -108,8 +108,6 @@ mod sound;
 /// The two talent spell-modifier tables (`SMSG_SET_FLAT_/PCT_SPELL_MODIFIER`) and the read that
 /// puts them on a number.
 mod spell;
-/// Warcraft Survivors: the top-down survival mode the `warcraft-survivors` launcher boots.
-mod survivors;
 /// The melee swing refusal's latch + 4 s repeat (`SMSG_ATTACKSWING_*`).
 mod swing_refusal;
 mod target;
@@ -227,13 +225,6 @@ pub fn run_with(build: BuildId, extend: impl FnOnce(&mut App)) -> AppExit {
     launch(build, Some(Box::new(extend)))
 }
 
-/// Warcraft Survivors: the client booted server-less into a top-down survival mode on a picked
-/// battleground ([`survivors`]), called by the `warcraft-survivors` launcher.
-pub fn run_survivors(build: BuildId) -> AppExit {
-    survivors::ACTIVE.store(true, std::sync::atomic::Ordering::Relaxed);
-    launch(build, None)
-}
-
 /// Azeroll: the client booted server-less into Elwynn Forest with a rolling ball that sticks to
 /// everything smaller than itself ([`azeroll`]), called by the `azeroll` launcher.
 pub fn run_azeroll(build: BuildId) -> AppExit {
@@ -241,13 +232,9 @@ pub fn run_azeroll(build: BuildId) -> AppExit {
     launch(build, None)
 }
 
-/// The browser launcher's pick: Azeroll, unless the page asks for Survivors (`?survivors=1`).
+/// The browser launcher's entry: Azeroll.
 pub fn run_web(build: BuildId) -> AppExit {
-    if webenv::var("WOW_SURVIVORS").is_some() {
-        run_survivors(build)
-    } else {
-        run_azeroll(build)
-    }
+    run_azeroll(build)
 }
 
 /// What a crate on top of benilla adds to the built app ([`run_with`]).
@@ -319,17 +306,12 @@ fn launch(build: BuildId, extend: Option<Extension<'_>>) -> AppExit {
     // With `$WOW_CAPTURE` set the app runs a deterministic, server-less capture (net off, so no
     // NPCs stream in) and exits.
     let capturing = run_mode::scenario_active();
-    // Survivors runs server-less too, on Kalimdor; `world_map` reads the map at `Startup`.
-    // Azeroll wins a conflict: one mode controller per app.
+    // Azeroll runs server-less on its level's map; `world_map` reads the map at `Startup`.
     let azeroll = azeroll::active();
-    let survivors = !azeroll && survivors::active();
-    if survivors {
-        benilla_world::world_map::set_start_map(1);
-    }
     if azeroll {
         benilla_world::world_map::set_start_map(azeroll::level::MAP);
     }
-    let server_less = survivors || azeroll;
+    let server_less = azeroll;
     // Every instrumented run, captures and live probes, opens in the background so it never takes
     // over a person's screen; `WOW_BG` overrides.
     let background = benilla_world::bgwin::background_run();
@@ -365,9 +347,7 @@ fn launch(build: BuildId, extend: Option<Extension<'_>>) -> AppExit {
     // (`embedded://benilla_app/shaders/…`), so no build-machine path reaches the binary.
 
     app.add_plugins(benilla_world::boot::tuned_default_plugins(Window {
-        title: if survivors {
-            "Warcraft Survivors"
-        } else if azeroll {
+        title: if azeroll {
             "Azeroll"
         } else {
             "benilla"
@@ -466,9 +446,6 @@ fn launch(build: BuildId, extend: Option<Extension<'_>>) -> AppExit {
             run_mode::start_state()
         },
     });
-    if survivors {
-        app.add_plugins(survivors::SurvivorsPlugin);
-    }
     if azeroll {
         app.add_plugins(azeroll::AzerollPlugin);
     }

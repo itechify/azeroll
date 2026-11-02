@@ -314,5 +314,4 @@ DATA_FOLDER="$PWD/wow-data/Data" URL=http://127.0.0.1:8099/azeroll/?localdata=1 
 ```
 
 WebGPU and a secure context (HTTPS or localhost) are required. Chrome/Edge are
-the tested browser family. `?survivors=1` still opts into Survivors; Azeroll is
-the default.
+the tested browser family.

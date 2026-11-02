@@ -1,6 +1,6 @@
 //! Local units, built the way the net layer builds streamed ones: a [`Guid`], a [`NetEntity`] and an
-//! [`ObjectStore`] are all the attach and animation systems need. A trimmed copy of
-//! `survivors::units`: creatures only, no weapons, auras or spell visuals.
+//! [`ObjectStore`] are all the attach and animation systems need. Creatures only: no weapons,
+//! auras or spell visuals.
 
 use benilla_protocol::messages::ObjectFields;
 use bevy::prelude::*;
