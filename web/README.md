@@ -256,3 +256,61 @@ is built and handed over inside the frame) and push heavy work to a Worker. `'*'
 `UNIT_*` fire — subscribe by name. Not in this version: party/guild blocks, unit facing, look
 pitch, an `interact` (right-click) op, on-demand name resolution (names come from the cache;
 a unit can be `name: null` for a frame or two), and raw packet access — deliberately.
+
+## GitHub Pages: local game data
+
+`https://itechify.github.io/azeroll/` runs Azeroll without a realm or data server.
+Choose your own WoW 1.12.1 (build 5875) `Data` folder. Chrome/Edge can remember
+its directory handle in IndexedDB; click **Use saved folder** to re-grant read
+permission on a return visit. The alternative folder input works without the
+File System Access picker. That fallback stores File snapshots in local
+IndexedDB so a restarted service worker can still read them, requiring roughly
+another install's worth of free disk space. Clearing site data removes them.
+
+A configured `web/azeroll-config.js` public object-storage base skips the picker.
+Hosted keys are lowercased with `\` converted to `/`; both page prefetches and
+Rust chain requests use that mapping. Core-file/index preflight failures fall
+back to the local picker before wasm starts. `?localdata=1` forces local mode.
+The bucket must provide CORS for the Pages origin and a `__index` JSON name list.
+
+`data-sw.js` intercepts only this app scope's `data/*` URLs. It never forwards
+those requests to the network. `local-mpq.js` reads indexes and individual
+compressed files with `Blob.slice().arrayBuffer()`, then a separate small Rust
+wasm module extracts them. It shares the engine's Storm hashing/decryption
+implementation and adds pure-Rust zlib, PKWARE implode and bzip2 decoding,
+encrypted/fixed-key files, single-unit files and sector-table padding/CRCs
+(CRC values are skipped, not verified). Other compression masks and post-vanilla
+patch formats are rejected. It uses the native chain's exact base order,
+`patch.MPQ`, sorted one-character `patch-?.MPQ`, and `speech2.MPQ`, with
+highest-priority wins and delete markers stopping fallback.
+
+No archives or extracted content are deployed to GitHub Pages. Hosted mode reads
+the separately configured object-storage bucket. The manifests contain only
+filenames. Extracted responses use `no-store`; game data stays on the device.
+The native host and client request whole files, so Range is ignored as on the
+host. Each decoded file is capped at 128 MiB; archives are never loaded whole.
+Chromium synchronous XHR bypasses service workers. For the engine's synchronous
+reads, the page holds the same archive indexes and exposes a byte-read function
+to Rust. It reads each bounded `File.slice()` using a temporary local blob URL
+and synchronous XHR, then decodes with the same small wasm extractor. Blob URLs
+are revoked immediately; none of these reads contact a server.
+
+Directory validation checks the required archive names, MPQ headers and vanilla
+interface version 11200; it cannot certify an install's exact patch provenance.
+
+The Pages workflow builds code with the existing scripts, checks every file is
+under 100 MB, excludes game-asset types, removes precompressed siblings (Pages
+handles HTTP compression), and deploys through the Actions Pages environment.
+No build output is committed. Existing `check.yml` remains unchanged.
+
+To test without the data host, serve `web/dist` under `/azeroll/` with any static
+server and add `?localdata=1`. Then run:
+
+```bash
+DATA_FOLDER="$PWD/wow-data/Data" node scripts/mpq-web-smoke.mjs
+DATA_FOLDER="$PWD/wow-data/Data" URL=http://127.0.0.1:8099/azeroll/?localdata=1 node scripts/web-smoke.mjs
+```
+
+WebGPU and a secure context (HTTPS or localhost) are required. Chrome/Edge are
+the tested browser family. `?survivors=1` still opts into Survivors; Azeroll is
+the default.

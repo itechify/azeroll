@@ -14,6 +14,19 @@
 /// this function's exact inverse, so it is kept pure and unit-tested rather than left to whatever
 /// a URL-building crate happens to escape.
 pub fn encode_name(name: &str) -> String {
+    #[cfg(target_arch = "wasm32")]
+    if wasm::hosted_base().is_some() {
+        return name
+            .replace('\\', "/")
+            .to_ascii_lowercase()
+            .split('/')
+            .map(encode_component)
+            .collect::<Vec<_>>()
+            .join("/");
+    }
+    encode_component(name)
+}
+fn encode_component(name: &str) -> String {
     const UNRESERVED: &[u8] =
         b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()";
     let mut out = String::with_capacity(name.len());
@@ -35,13 +48,22 @@ mod wasm {
     /// The root every chain fetch is served from: `/data` under this page's own origin. The web
     /// host answers both the client bundle and the `/data/*` routes from one process (Lane H), so
     /// there is never a cross-origin question to configure — this is the whole answer.
+    pub fn hosted_base() -> Option<String> {
+        let value = js_sys::Reflect::get(&web_sys::window()?.into(), &"__azeroll_data_base".into())
+            .ok()?
+            .as_string()?;
+        let value = value.trim().trim_end_matches('/');
+        (!value.is_empty()).then(|| value.to_owned())
+    }
     pub fn data_base() -> String {
-        let origin = web_sys::window()
-            .expect("benilla_formats::web only runs inside a browser tab")
-            .location()
-            .origin()
-            .expect("window.location.origin");
-        format!("{origin}/data")
+        if let Some(base) = hosted_base() {
+            return base;
+        }
+        let location = web_sys::window().expect("browser window").location();
+        let origin = location.origin().expect("window.location.origin");
+        let path = location.pathname().expect("window.location.pathname");
+        let directory = path.rsplit_once('/').map_or("", |(dir, _)| dir);
+        format!("{origin}{directory}/data")
     }
 
     /// Append `name` to the page's boot-read trace, if the page armed one — the input to
@@ -88,6 +110,23 @@ mod wasm {
     /// instead of guessing UTF-8 and mangling anything non-ASCII into U+FFFD, so `response_text()`
     /// round-trips arbitrary binary losslessly through `& 0xFF`.
     pub fn fetch_sync(url: &str) -> std::io::Result<Vec<u8>> {
+        use wasm_bindgen::JsCast;
+        let window = web_sys::window().expect("browser window");
+        if let Ok(function) = js_sys::Reflect::get(&window, &"__azeroll_read_local".into()) {
+            if let Some(function) = function.dyn_ref::<js_sys::Function>() {
+                let encoded = url.split_once("/data/").map(|(_, name)| name).unwrap_or("");
+                let name = js_sys::decode_uri_component(encoded).map_err(js_err)?;
+                let result = function.call1(&JsValue::NULL, &name).map_err(js_err)?;
+                if result.is_null() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        url.to_string(),
+                    ));
+                }
+                return Ok(js_sys::Uint8Array::new(&result).to_vec());
+            }
+        }
+
         let xhr = XmlHttpRequest::new().map_err(js_err)?;
         xhr.open_with_async("GET", url, false).map_err(js_err)?;
         xhr.override_mime_type("text/plain; charset=x-user-defined")

@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const source = (await readFile(new URL('../boot.js', import.meta.url), 'utf8'))
+  .replace("import { dataUrl } from './data-url.js';", "const dataUrl = name => '/data/' + encodeURIComponent(name);")
   .replaceAll('import.meta.url', JSON.stringify(new URL('../boot.js', import.meta.url).href));
 const { boot } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
 const wasmBytes = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]);
@@ -15,7 +16,7 @@ const deferred = () => {
 function setup(t, fetch) {
   const children = new Map();
   const element = () => ({
-    style: {}, classList: { add() {} }, remove() {},
+    appendChild() {}, style: { setProperty() {} }, classList: { add() {} }, remove() {},
     querySelector(selector) {
       if (!children.has(selector)) children.set(selector, element());
       return children.get(selector);
@@ -24,7 +25,7 @@ function setup(t, fetch) {
   for (const [key, value] of Object.entries({
     fetch, location: { search: '' }, window: {},
     document: { createElement: element, body: { appendChild() {} } },
-    setTimeout: () => 0, clearTimeout: () => {},
+    setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {},
   })) {
     const descriptor = Object.getOwnPropertyDescriptor(globalThis, key);
     Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });

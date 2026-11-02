@@ -35,6 +35,9 @@ mkdir -p "${DIST}"
 strip=(--remove-name-section --remove-producers-section)
 [ "${WEB_DEBUG:-0}" = 1 ] && strip=()
 wasm-bindgen --target web --no-typescript ${strip[@]+"${strip[@]}"} --out-dir "${DIST}" "${WASM}"
+cargo build --profile "${PROFILE}" --target wasm32-unknown-unknown -p wenilla-mpq-web
+wasm-bindgen --target web --no-typescript --out-dir "${DIST}" "${CARGO_TARGET_DIR:-target}/wasm32-unknown-unknown/${PROFILE}/wenilla_mpq_web.wasm"
+cp web/azeroll-config.js web/data-url.js web/local-data.js web/local-data-store.js web/local-mpq.js web/data-sw.js "${DIST}/"
 cp web/index.html web/favicon.svg web/wasi_stubs.js web/boot.js web/platform.js web/bridge.js "${DIST}/"
 # The bridge examples (web/README.md § "JavaScript bridge"): a HUD, an idle loop.
 mkdir -p "${DIST}/examples" && cp web/examples/*.js "${DIST}/examples/"

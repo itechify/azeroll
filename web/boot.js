@@ -1,3 +1,4 @@
+import { dataUrl } from './data-url.js';
 // boot.js — the pre-login loading experience, shared by the dev page (web/index.html) and the
 // realm page (crates/wenilla-realm/templates/play.html).
 //
@@ -129,7 +130,7 @@ async function prefetchManifest(manifestUrl, onProgress) {
       const name = queue.shift();
       if (name === undefined) return;
       try {
-        const resp = await fetch('/data/' + encodeURIComponent(name));
+        const resp = await fetch(dataUrl(name));
         if (resp.ok) await resp.arrayBuffer(); // body fully read = body fully cached
       } catch (_) {
         /* offline blip, 404 drift — the sync XHR path will deal with it */
@@ -194,8 +195,8 @@ function createBootUi() {
   root.id = 'wenilla-boot';
   root.innerHTML = `
     <style>
-      @font-face { font-family: 'WowMorpheus'; src: url('/data/Fonts%5CMORPHEUS.TTF'); font-display: swap; }
-      @font-face { font-family: 'WowFriz'; src: url('/data/Fonts%5CFRIZQT__.TTF'); font-display: swap; }
+      @font-face { font-family: 'WowMorpheus'; src: url('${dataUrl('Fonts\\MORPHEUS.TTF')}'); font-display: swap; }
+      @font-face { font-family: 'WowFriz'; src: url('${dataUrl('Fonts\\FRIZQT__.TTF')}'); font-display: swap; }
       #wenilla-boot { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center;
         color: #d8c9a3; font: 14px WowFriz, Georgia, serif; overflow: hidden;
         background:

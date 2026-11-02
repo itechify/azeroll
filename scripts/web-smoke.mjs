@@ -90,7 +90,7 @@ const fps = async (ms) => { const a = await ev('window.__f'); await sleep(ms); r
 
 await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable');
 // navigator.gpu exists only in a secure context (127.0.0.1 counts, about:blank does not).
-await send('Page.navigate', { url: new URL('/favicon.svg', URL_).href }); await sleep(1500);
+await send('Page.navigate', { url: new URL('./favicon.svg', URL_).href }); await sleep(1500);
 const gpu = await ev(`(async()=>{ if(!navigator.gpu) return 'no navigator.gpu'; const a = await navigator.gpu.requestAdapter(); if(!a) return 'no adapter'; const i = a.info; return JSON.stringify({vendor:i.vendor,arch:i.architecture,fallback:a.isFallbackAdapter}); })()`);
 console.log('WebGPU adapter:', gpu); fs.writeFileSync(`${OUT}/gpu.txt`, String(gpu));
 if (!String(gpu).startsWith('{')) { console.log('no WebGPU adapter: the world cannot run'); done(2); }
@@ -98,11 +98,21 @@ if (!String(gpu).startsWith('{')) { console.log('no WebGPU adapter: the world ca
 await send('Page.addScriptToEvaluateOnNewDocument', { source: 'window.__f=0;(function f(){window.__f++;requestAnimationFrame(f)})();' });
 await send('Page.navigate', { url: URL_ });
 const t0 = Date.now(); let ready = false;
+if (process.env.DATA_FOLDER) {
+  for (let i=0;i<60;i++) {
+    if (await ev("!!document.querySelector('#data-files')")) break;
+    await sleep(500);
+  }
+  await send('DOM.enable');
+  const {result:doc}=await send('DOM.getDocument');
+  const {result:input}=await send('DOM.querySelector',{nodeId:doc.root.nodeId,selector:'#data-files'});
+  await send('DOM.setFileInputFiles',{nodeId:input.nodeId,files:[process.env.DATA_FOLDER]});
+}
 while (Date.now() - t0 < WAIT_MS) {
   await sleep(5000);
   const secs = Math.round((Date.now() - t0) / 1000);
   console.log(`${secs}s overlay=${JSON.stringify(((await ev(`(document.getElementById('wenilla-boot')||{}).innerText||'gone'`)) || '').split('\n').slice(2, 3))} console=${lines.length}`);
-  if (secs % 30 < 5) await shot(`boot-${secs}`);
+
   if (lines.some((l) => /loading screen: cleared/.test(l))) { console.log(`world ready after ${secs}s`); ready = true; break; }
   if (lines.some((l) => /panicked|RuntimeError|unreachable/.test(l))) { console.log('panic'); break; }
 }
@@ -110,7 +120,7 @@ await sleep(3000); await shot('world-idle');
 console.log('fps idle', await fps(5000));
 await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 400, y: 300 });
 await key('rawKeyDown', 'w', 'KeyW', 87);
-for (let i = 0; i < 4; i++) { await sleep(2500); await shot(`w-${i}`); }
+await sleep(10000);
 console.log('fps moving', await fps(5000));
 await key('keyUp', 'w', 'KeyW', 87);
 await sleep(1000); await shot('after');
