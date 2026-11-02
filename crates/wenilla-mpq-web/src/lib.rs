@@ -209,7 +209,7 @@ mod tests {
         let mut raw = vec![0u8; 20];
         let mut offsets = vec![20, 20 + (z.len() + 1) as u32, 20 + 2 * (z.len() + 1) as u32];
         crypto::encrypt_block(&mut offsets, key.wrapping_sub(1));
-        for (b, v) in raw.chunks_exact_mut(4).zip(offsets) {
+        for (b, v) in raw.as_chunks_mut::<4>().0.iter_mut().zip(offsets) {
             b.copy_from_slice(&v.to_le_bytes());
         }
         for i in 0..2 {
@@ -218,7 +218,7 @@ mod tests {
             // Use 8192-byte sectors, so each sector's expected size is 8192.
             let mut w = words(&sector);
             crypto::encrypt_block(&mut w, key + i);
-            for (b, v) in sector.chunks_exact_mut(4).zip(w) {
+            for (b, v) in sector.as_chunks_mut::<4>().0.iter_mut().zip(w) {
                 b.copy_from_slice(&v.to_le_bytes());
             }
             raw.extend(sector);
