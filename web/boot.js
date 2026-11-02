@@ -1,4 +1,4 @@
-import { dataUrl } from './data-url.js';
+import { dataUrl, hostedBase } from './data-url.js';
 // boot.js — the pre-login loading experience, shared by the dev page (web/index.html) and the
 // realm page (crates/wenilla-realm/templates/play.html).
 //
@@ -42,8 +42,14 @@ export async function boot(init, opts = {}) {
 
   const prefetch = skipPrefetch
     ? Promise.resolve()
-    : prefetchManifest('./boot-manifest.json', (done, total) => ui.setData(done, total)).catch(
-        () => ui.setData(0, 0)
+    : prefetchManifest('./boot-manifest.json', (done, total) => ui.setData(done, total), !!hostedBase()).catch(
+        async () => {
+          if (!hostedBase()) return ui.setData(0, 0);
+          window.__azeroll_data_base='';
+          const { selectLocalData }=await import('./local-data.js');
+          await selectLocalData('Hosted game data did not finish loading. Choose your local Data folder to continue.');
+          await prefetchManifest('./boot-manifest.json', (done,total)=>ui.setData(done,total));
+        }
       );
 
   // Compile immediately: merely fetching a Response leaves its body backpressured until
@@ -116,7 +122,7 @@ async function fetchWasm(url, onBytes) {
 /// full-body fetches. Failures are counted as done and otherwise ignored — a miss just means
 /// that file loads the old way. A missing/invalid manifest resolves immediately (line hides).
 /// Used twice: the boot set before `init()`, the world-entry set after `ready`.
-async function prefetchManifest(manifestUrl, onProgress) {
+async function prefetchManifest(manifestUrl, onProgress, strict = false) {
   const r = await fetch(manifestUrl);
   if (!r.ok) return onProgress(0, 0);
   const manifest = await r.json();
@@ -125,21 +131,25 @@ async function prefetchManifest(manifestUrl, onProgress) {
   let done = 0;
   onProgress(0, names.length);
   const queue = names.slice();
+  let failure;
   async function worker() {
     for (;;) {
+      if (failure) return;
       const name = queue.shift();
       if (name === undefined) return;
       try {
         const resp = await fetch(dataUrl(name));
         if (resp.ok) await resp.arrayBuffer(); // body fully read = body fully cached
-      } catch (_) {
-        /* offline blip, 404 drift — the sync XHR path will deal with it */
+        else if (strict && (resp.status!==404 || /\.dbc$|\.ttf$|FrameXML\.toc$/i.test(name))) throw Error(`Game data HTTP ${resp.status}: ${name}`);
+      } catch (error) {
+        if (strict) failure=error;
       }
       done += 1;
       onProgress(done, names.length);
     }
   }
   await Promise.all(Array.from({ length: PREFETCH_CONCURRENCY }, worker));
+  if (failure) throw failure;
 }
 
 /// `window.__wenilla_progress(stage)` — the client's calls land here (webprogress.rs).

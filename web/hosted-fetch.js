@@ -1,6 +1,6 @@
 // R2's development endpoint throttles asset bursts. Bound simultaneous downloads and retry
 // transient network/429/5xx failures; ordinary missing files still return immediately.
-export function installHostedFetch(base) {
+export function installHostedFetch(base, { timeoutMs=30000 } = {}) {
   const original=window.fetch.bind(window);
   let active=0, nextStart=0;
   const waiting=[];
@@ -15,8 +15,12 @@ export function installHostedFetch(base) {
       const now=performance.now(), start=Math.max(now,nextStart); nextStart=start+25;
       if(start>now)await delay(start-now);
       for(let attempt=0;;attempt++) {
+        const controller=new AbortController();
+        const callerSignal=options?.signal || input?.signal;
+        const timer=setTimeout(()=>controller.abort(),timeoutMs);
         try {
-          const response=await original(input,options);
+          const signal=callerSignal?AbortSignal.any([callerSignal,controller.signal]):controller.signal;
+          const response=await original(input,{...options,mode:'cors',signal});
           if((response.status===429 || response.status>=500) && attempt<3) {
             await response.body?.cancel();await delay(500*2**attempt);continue;
           }
@@ -24,9 +28,9 @@ export function installHostedFetch(base) {
           const bytes=await response.arrayBuffer();
           return new Response(bytes,{status:response.status,statusText:response.statusText,headers:response.headers});
         } catch(error) {
-          if(options?.signal?.aborted||error.name==='AbortError'||attempt>=3)throw error;
+          if(callerSignal?.aborted||(!controller.signal.aborted && error.name==='AbortError')||attempt>=3)throw error;
           await delay(500*2**attempt);
-        }
+        } finally {clearTimeout(timer);}
       }
     } finally {release();}
   };

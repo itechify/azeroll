@@ -269,10 +269,10 @@ another install's worth of free disk space. Clearing site data removes them.
 
 A configured `web/azeroll-config.js` public object-storage base skips the picker.
 Hosted keys are lowercased with `\` converted to `/`; both page prefetches and
-Rust chain requests use that mapping. Core-file/index preflight failures fall
+Rust chain requests use that mapping. Core-file/index preflight failures and exhausted boot-prefetch faults fall
 back to the local picker before wasm starts. `?localdata=1` forces local mode.
 Hosted fetches are limited to eight concurrent full-body downloads with paced
-starts and retries for transient faults, to avoid R2 development-endpoint bursts.
+starts, per-attempt timeouts, and retries for transient faults, to avoid R2 development-endpoint bursts.
 The bucket must provide CORS for the Pages origin and a `__index` JSON name list.
 
 `data-sw.js` intercepts only this app scope's `data/*` URLs. It never forwards

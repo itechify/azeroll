@@ -3,7 +3,8 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const source = (await readFile(new URL('../boot.js', import.meta.url), 'utf8'))
-  .replace("import { dataUrl } from './data-url.js';", "const dataUrl = name => '/data/' + encodeURIComponent(name);")
+  .replace("import { dataUrl, hostedBase } from './data-url.js';", "const dataUrl = name => '/data/' + encodeURIComponent(name); const hostedBase = () => window.__azeroll_data_base || '';")
+  .replace("await import('./local-data.js')", "await Promise.resolve({ selectLocalData: globalThis.__selectLocalData })")
   .replaceAll('import.meta.url', JSON.stringify(new URL('../boot.js', import.meta.url).href));
 const { boot } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
 const wasmBytes = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]);
@@ -80,4 +81,20 @@ test('invalid wasm reports compilation failure and never starts the client', asy
     new Response('invalid', { headers: { 'content-type': 'application/wasm' } }));
   await assert.rejects(boot(() => assert.fail('must not initialize')), WebAssembly.CompileError);
   assert.match(children.get('.stage').textContent, /client failed to start/);
+});
+
+
+test('failed hosted core prefetch switches to local data before initialization', async t => {
+  let reads=0,selected=0;
+  setup(t, async url => {
+    if(String(url).endsWith('boot-manifest.json'))return new Response(JSON.stringify({names:['DBFilesClient\\Map.dbc']}));
+    if(String(url).includes('/data/')){reads++;return new Response('bytes',{status:window.__azeroll_data_base?503:200});}
+    return new Response(wasmBytes,{headers:{'content-type':'application/wasm'}});
+  });
+  window.__azeroll_data_base='https://example.com/data';
+  globalThis.__selectLocalData=async()=>{selected++;};
+  t.after(()=>delete globalThis.__selectLocalData);
+  assert.equal(await boot(async()=>{assert.equal(selected,1);return 'started';}),'started');
+  assert.equal(reads,2);
+  assert.equal(window.__azeroll_data_base,'');
 });
