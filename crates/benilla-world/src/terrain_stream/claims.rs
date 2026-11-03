@@ -32,3 +32,57 @@ pub struct DoodadClaimed {
 pub struct DoodadReleased {
     pub unique_id: u32,
 }
+
+/// Stable identity of a MODD record, independent of selected-set ordinals and residency.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct WmoPropKey {
+    pub map: u32,
+    pub placement: u32,
+    pub modd: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct WmoPropQuery {
+    /// Original MODD light provider, retained by ownership transfers.
+    pub light: super::PropLight,
+    pub key: WmoPropKey,
+    pub model: String,
+    pub transform: Transform,
+}
+
+/// Install before streaming. Each selected MODD is classified once when its root resolves.
+#[derive(Resource, Default, Clone)]
+pub struct WmoPropClaims {
+    pub predicate: Option<std::sync::Arc<dyn Fn(&WmoPropQuery) -> bool + Send + Sync>>,
+}
+
+#[derive(Message, Debug, Clone)]
+pub struct WmoPropClaimed(pub WmoPropQuery);
+
+#[derive(Message, Debug, Clone, Copy)]
+pub struct WmoPropReleased {
+    pub key: WmoPropKey,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn identity_has_three_independent_namespaces() {
+        let key = WmoPropKey {
+            map: 0,
+            placement: 71414,
+            modd: 303,
+        };
+        assert_ne!(key, WmoPropKey { map: 1, ..key });
+        assert_ne!(
+            key,
+            WmoPropKey {
+                placement: 1,
+                ..key
+            }
+        );
+        assert_ne!(key, WmoPropKey { modd: 1, ..key });
+        assert!(WmoPropClaims::default().predicate.is_none());
+    }
+}

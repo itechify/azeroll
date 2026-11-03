@@ -125,6 +125,9 @@ pub struct WmoGroupVis {
 }
 
 impl WmoGroupVis {
+    pub(crate) fn piece_hidden(&self, parts: &crate::terrain_stream::WmoPartitions) -> bool {
+        parts.hidden(self.instance, &self.groups)
+    }
     /// Drawn iff any referencing group is in this frame's PVS; an index past the visible set reads
     /// visible, so a lookup miss never blanks a building.
     pub fn drawn_by(&self, inst: &WmoPortalInstance) -> bool {
@@ -229,6 +232,12 @@ pub struct InteriorClaim {
     pub(crate) exterior_visible: bool,
 }
 
+/// A point (Bevy space) whose building draws every group, whatever the camera sees: a mode that
+/// keeps the lens outside the walls (Azeroll's ball indoors) sets it to the thing the player must
+/// still see. `None`, the default, leaves the camera's flood alone.
+#[derive(Resource, Default, Clone, Copy)]
+pub struct WmoRevealPoint(pub Option<Vec3>);
+
 /// Ordering handle so the `Visibility` authority runs after this frame's PVS.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WmoPvsSet;
@@ -238,11 +247,16 @@ pub struct WmoPortalPlugin;
 
 impl Plugin for WmoPortalPlugin {
     fn build(&self, app: &mut App) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if std::env::var_os("WOW_WMO_DRAW_AUDIT").is_some() {
+            app.add_systems(Last, write_draw_audit);
+        }
         app.add_systems(
             Startup,
             interior::load_wmo_areas.after(benilla_assets::AssetSet::Open),
         )
         .init_resource::<CurrentWmoInterior>()
+        .init_resource::<WmoRevealPoint>()
         .init_resource::<PlayerWmoRoom>()
         .init_resource::<CurrentAreaInterior>()
         .init_resource::<CameraWmoFog>()
@@ -265,13 +279,89 @@ impl Plugin for WmoPortalPlugin {
     }
 }
 
+// Native source-isolation instrument. Use WOW_STATIC_GX=0 WOW_STATIC_MERGE=0 so
+// ViewVisibility describes the actual entity draw lane, then hold the camera still.
+#[cfg(not(target_arch = "wasm32"))]
+fn write_draw_audit(
+    camera: Query<&GlobalTransform, With<WorldCamera>>,
+    instances: Query<(Entity, &WmoPortalInstance)>,
+    pieces: Query<(
+        &WmoGroupVis,
+        &ViewVisibility,
+        &crate::model_render::ModelPart,
+    )>,
+    models: Res<Assets<WmoModel>>,
+    mut held: Local<Option<(Vec3, Vec3, u32)>>,
+) {
+    let Ok(camera) = camera.single() else { return };
+    let eye = camera.translation();
+    let forward = *camera.forward();
+    let frame = match &mut *held {
+        Some((old_eye, old_forward, frames))
+            if eye.distance_squared(*old_eye) < 0.0001
+                && forward.distance_squared(*old_forward) < 0.0001 =>
+        {
+            *frames += 1;
+            *frames
+        }
+        _ => {
+            *held = Some((eye, forward, 0));
+            0
+        }
+    };
+    if frame != 60 {
+        return;
+    }
+    let mut text = format!("eye={eye:?} forward={forward:?}\n");
+    for (entity, inst) in &instances {
+        let Some(model) = models.get(&inst.handle) else {
+            continue;
+        };
+        let mut drawn = std::collections::BTreeSet::new();
+        let mut resident = std::collections::BTreeSet::new();
+        let mut batches = 0;
+        for (group, visibility, kind) in &pieces {
+            if group.instance != entity || kind.kind != crate::model_render::ModelKind::Wmo {
+                continue;
+            }
+            resident.extend(group.groups.iter().copied());
+            if visibility.get() {
+                batches += 1;
+                drawn.extend(group.groups.iter().copied());
+            }
+        }
+        text.push_str(&format!("instance={entity:?} model_groups={} resident_groups={} drawn_groups={} drawn_batches={}\nresident={resident:?}\ndrawn={drawn:?}\nPVS={:?}\n", model.group_nav.len(), resident.len(), drawn.len(), batches, inst.visible));
+    }
+    if let Some(path) = std::env::var_os("WOW_WMO_DRAW_AUDIT") {
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+        {
+            let _ = std::io::Write::write_all(&mut file, text.as_bytes());
+        }
+    }
+}
+
 /// Max drop (yd) for the current-group down-ray, the client's ray length: a floor further below
 /// is not the room you are in.
 const MAX_FLOOR_DROP: f32 = 1760.0;
 
 /// Recompute each resident WMO's per-group visible set from the camera; a portal-less prop stays
 /// all-visible.
+/// Render-only group suppression for terminal mode sequences. Empty by default.
+#[derive(Resource, Default)]
+pub struct WmoRenderMask(pub std::collections::HashMap<Entity, Vec<u16>>);
+
+/// A terminal/flyover camera may frame a placement while its physical room stays intact.
+/// Treat only that instance as exterior for camera-window/fog admission. Default: normal flood.
+#[derive(Resource, Default)]
+pub struct WmoExteriorView(pub Option<Entity>);
+
 fn compute_wmo_pvs(
+    mask: Option<Res<WmoRenderMask>>,
+    parts: Option<Res<crate::terrain_stream::WmoPartitions>>,
+    exterior_view: Option<Res<WmoExteriorView>>,
     wmos: Res<Assets<WmoModel>>,
     cam: Query<(&GlobalTransform, &Projection), With<WorldCamera>>,
     mut instances: Query<(Entity, &mut WmoPortalInstance)>,
@@ -281,6 +371,7 @@ fn compute_wmo_pvs(
     mut camera_fog: ResMut<CameraWmoFog>,
     mut camera_claim: ResMut<CameraInteriorClaim>,
     mut camera_windows: ResMut<ExteriorWindows>,
+    reveal: Res<WmoRevealPoint>,
 ) {
     // No world camera yet: keep last frame's sets, all visible.
     let Some((cam_t, proj)) = cam.iter().next() else {
@@ -326,13 +417,41 @@ fn compute_wmo_pvs(
         if model.portal_refs.is_empty() || model.portal_infos.is_empty() {
             let held = inst.bypass_change_detection();
             let mut changed = false;
-            if held.visible.len() != groups || held.visible.iter().any(|v| !*v) {
+            let city = parts.as_ref().is_some_and(|p| p.enabled(entity));
+            let masked = mask.as_ref().and_then(|m| m.0.get(&entity));
+            if city || masked.is_some() {
+                let desired: Vec<_> = (0..groups)
+                    .map(|g| {
+                        !parts
+                            .as_ref()
+                            .is_some_and(|p| p.hidden(entity, &[g as u16]))
+                            && !masked.is_some_and(|gs| gs.contains(&(g as u16)))
+                    })
+                    .collect();
+                if held.visible != desired {
+                    held.visible = desired;
+                    changed = true;
+                }
+            } else if held.visible.len() != groups || held.visible.iter().any(|v| !*v) {
                 held.visible = vec![true; groups];
                 changed = true;
             }
             if held.interior_fog.len() != groups || held.interior_fog.iter().any(|v| *v) {
                 held.interior_fog = vec![false; groups];
                 changed = true;
+            }
+            // An explicitly outdoor partition has no portal flood to latch its canal surfaces.
+            if parts.as_ref().is_some_and(|p| p.enabled(entity)) {
+                if held.liquid_visited.len() != groups {
+                    held.liquid_visited = vec![false; groups];
+                    changed = true;
+                }
+                for g in 0..groups {
+                    if held.visible[g] && !held.liquid_visited[g] {
+                        held.liquid_visited[g] = true;
+                        changed = true;
+                    }
+                }
             }
             if changed {
                 inst.set_changed();
@@ -359,6 +478,20 @@ fn compute_wmo_pvs(
             &world_from_local,
             &mut (&mut tap, &mut log),
         );
+        // The reveal point's building draws whole, as seen from outside as from in.
+        if let Some(p) = reveal.0 {
+            let p_local = bevy_to_wow(local_from_world.transform_point3(p));
+            if interior::contains_collision_bounds(model.collision_bounds, p_local) {
+                fresh.visible.iter_mut().for_each(|v| *v = true);
+            }
+        }
+        if let Some(groups) = mask.as_ref().and_then(|m| m.0.get(&entity)) {
+            for &g in groups {
+                if let Some(v) = fresh.visible.get_mut(g as usize) {
+                    *v = false;
+                }
+            }
+        }
         if inst.bypass_change_detection().visible != fresh.visible {
             inst.bypass_change_detection().visible = fresh.visible;
             inst.set_changed();
@@ -384,7 +517,7 @@ fn compute_wmo_pvs(
         }
         // The claim rejects on `0x8` alone (the `[0xc7b748]` writer, `0x6be451`/`0x6be477`): a
         // `0x40`-only porch still claims the camera.
-        if claim.is_none() {
+        if claim.is_none() && exterior_view.as_ref().is_none_or(|v| v.0 != Some(entity)) {
             if let Some(gi) = tap.in_group {
                 if model
                     .group_nav
@@ -1447,6 +1580,7 @@ mod tests {
     fn portal_model() -> WmoModel {
         WmoModel {
             wmo_id: 0,
+            source_fingerprint: 0,
             submeshes: Vec::new(),
             submesh_group: Vec::new(),
             portal_vertices: vec![

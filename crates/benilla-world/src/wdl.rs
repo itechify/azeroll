@@ -33,8 +33,14 @@ pub(crate) struct WdlPlugin;
 
 impl Plugin for WdlPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(MaterialPlugin::<WdlMaterial>::default())
-            .add_systems(Startup, setup_wdl.after(AssetSet::Open))
+        // Keep the material family registered even when its geometry is disabled.
+        app.add_plugins(MaterialPlugin::<WdlMaterial>::default());
+        // Capture-only source isolation; ordinary worlds retain the complete backdrop.
+        #[cfg(not(target_arch = "wasm32"))]
+        if std::env::var_os("WOW_NO_WDL").is_some() {
+            return;
+        }
+        app.add_systems(Startup, setup_wdl.after(AssetSet::Open))
             // The ring follows the world's lifecycle: it spawns only while a world is live.
             .add_systems(Update, stream_wdl.run_if(crate::schedule::world_is_live))
             .add_systems(

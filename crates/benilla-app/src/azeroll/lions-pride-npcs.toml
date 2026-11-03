@@ -1,0 +1,87 @@
+# Last Call's witnesses. Display IDs from the Goldshire cast (data/goldshire-npcs.json provenance);
+# positions are authored for the vignettes in lions-pride.toml. Everyone is a villager: nobody
+# forms a wall in the inn's narrow places (D18).
+
+# Behind the bar, polishing the same mug since the regiment left.
+[[npc]]
+name = "Innkeeper Farley"
+quirk = "polish"
+carry = "mug"
+scene = "last call"
+role = "villager"
+activity = "work"
+display = 1291
+at = [-9462.0, 9.9, 56.95]
+yaw = 1.571
+indoors = true
+
+# Asleep under the bar front, in the burst purse.
+[[npc]]
+name = "Remy \"Two Times\""
+quirk = "sleeper"
+carry = "bottle"
+scene = "last call"
+role = "villager"
+activity = "sleep"
+display = 3254
+at = [-9460.8, 15.9, 56.95]
+yaw = 0.6
+indoors = true
+
+# The cook, who gave up at the washing-up.
+[[npc]]
+name = "Brog Hamfist"
+carry = "cleaver"
+scene = "last call"
+role = "villager"
+activity = "work"
+display = 1292
+at = [-9468.6, -1.6, 56.95]
+yaw = 4.0
+indoors = true
+
+# Slept through the pillow fight in the upstairs lounge.
+[[npc]]
+name = "William Pestle"
+quirk = "sleeper"
+carry = "bottle"
+scene = "last call"
+role = "villager"
+activity = "sleep"
+display = 5038
+at = [-9461.6, 32.4, 63.82]
+yaw = 2.985
+indoors = true
+
+# Lost the card game in the west nook and has not noticed yet.
+[[npc]]
+name = "Barkeep Dobbins"
+quirk = "sleeper"
+carry = "stein"
+scene = "last call"
+role = "villager"
+activity = "sleep"
+display = 3266
+at = [-9474.6, 35.6, 56.95]
+yaw = 1.2
+indoors = true
+
+# D33, replay-design.md 4.1: a cousin of Fizzwick, counting the cellar rats in their cheese hoard.
+# Display 3121 (gnome girl, pigtails). She ignores a ball below `catch[0]`, waves, speaks and circles
+# the Colossal Swiss inside the window, and cowers above `catch[1]`. `scale` multiplies the display's
+# own: the cousin opens (becomes edible) at D 2.15 x her height, so `catch[0]` follows the measured
+# `azeroll NPC: ... axis=` line in the log (0.52 yd: she opens at D 1.12).
+[[npc]]
+name = "Pippa Fizzwick"
+role = "cousin"
+cousin = "pippa"
+scene = "last call"
+activity = "work"
+carry = "cheese"
+display = 3121
+scale = 0.45
+catch = [1.12, 1.7]
+caption = "Forty-one, forty-two… do NOT roll up the rats, I am COUNTING."
+at = [-9466.5, -4.0, 49.8]
+yaw = 2.0
+indoors = true

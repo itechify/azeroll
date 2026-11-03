@@ -282,6 +282,10 @@ impl StaticMerge {
         self.doodads.len() + self.props.len()
     }
 
+    pub(super) fn retire(&mut self, uid: u32) {
+        self.props.retain(|key, _| key.0 != uid);
+    }
+
     pub(super) fn clear(&mut self) {
         self.doodads.clear();
         self.props.clear();
@@ -735,8 +739,12 @@ mod tests {
 
     fn blank_placement(portal_instance: Option<Entity>) -> Placement {
         Placement {
+            map: 0,
+            claimed_props: Vec::new(),
+            prop_claims: crate::terrain_stream::WmoPropClaims::default(),
             model: ModelHandle::M2(Default::default()),
             claimed: false,
+            suppressed: false,
             transform: Transform::IDENTITY,
             entities: Vec::new(),
             spawned: true,
@@ -840,10 +848,11 @@ mod tests {
         assert_eq!(owned.len(), 1);
         let blob = owned[0];
         assert!(app.world().get::<WmoGroupVis>(blob).is_none());
-        assert!(app
-            .world()
-            .get::<crate::exterior_cull::ExteriorScene>(blob)
-            .is_none());
+        assert!(
+            app.world()
+                .get::<crate::exterior_cull::ExteriorScene>(blob)
+                .is_none()
+        );
         let mesh3d = app.world().get::<Mesh3d>(blob).unwrap().0.clone();
         let meshes = app.world().resource::<Assets<Mesh>>();
         let mesh = meshes.get(&mesh3d).unwrap();
@@ -876,10 +885,11 @@ mod tests {
         assert_eq!(owned.len(), 1);
         let blob = owned[0];
         assert!(app.world().get::<NoAutoAabb>(blob).is_some());
-        assert!(app
-            .world()
-            .get::<crate::model_fade::DoodadFade>(blob)
-            .is_none());
+        assert!(
+            app.world()
+                .get::<crate::model_fade::DoodadFade>(blob)
+                .is_none()
+        );
         // One fade sphere per vertex: the `WOW_MERGED_FADE` contract.
         let mesh3d = app.world().get::<Mesh3d>(blob).unwrap().0.clone();
         let meshes = app.world().resource::<Assets<Mesh>>();

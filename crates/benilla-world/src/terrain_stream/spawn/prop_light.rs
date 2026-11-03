@@ -7,6 +7,9 @@ use bevy::prelude::*;
 
 /// One WMO doodad prop at its world transform, spawned once its M2 loads.
 pub(crate) struct WmoDoodadInst {
+    /// Absolute MODD identity, never the ordinal in the selected sets.
+    #[allow(dead_code)]
+    pub(crate) key: super::super::WmoPropKey,
     pub(crate) handle: Handle<M2Model>,
     pub(crate) transform: Transform,
     /// The groups whose MODR names this prop, its portal-cull key: drawn while any is visible.
@@ -18,7 +21,8 @@ pub(crate) struct WmoDoodadInst {
 }
 
 /// A WMO prop's lighting, its MOLR lights already in world space for the spawn-time fold.
-pub(crate) enum PropLight {
+#[derive(Component, Clone, Debug)]
+pub enum PropLight {
     Exterior,
     Interior {
         /// The ambient word, `cap96(MODD.colour)` (0–1 RGB).
@@ -57,6 +61,7 @@ pub fn hex_word(c: [f32; 3]) -> String {
 }
 
 /// One MOLR light as the interior folds read it: world position and colour × intensity.
+#[derive(Clone, Debug)]
 pub struct PropLobeLight {
     pub pos: Vec3,
     pub color_i: [f32; 3],

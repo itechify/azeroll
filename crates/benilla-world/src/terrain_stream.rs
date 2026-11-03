@@ -2,9 +2,9 @@
 //! the `AssetServer`, spawns its cells, collider, placements, MCLQ water and ground clutter, and
 //! publishes the residency the loading screen reads.
 
+use bevy::platform::time::Instant;
 use std::collections::HashMap;
 use std::time::Duration;
-use bevy::platform::time::Instant;
 
 use benilla_assets::coords::{bevy_to_wow, placement_rotation, wow_to_bevy};
 use benilla_assets::{AdtTile, M2Model, WdtIndex, WmoModel};
@@ -13,23 +13,33 @@ use bevy::pbr::ExtendedMaterial;
 use bevy::prelude::*;
 use bevy::render::render_resource::Face;
 
-use crate::clutter::{scatter_tile_clutter, ClutterConfig, GroundClutter};
-use crate::collision::{walk_layers, GroundDecalSurface, PickOccluder};
+use crate::clutter::{ClutterConfig, GroundClutter, scatter_tile_clutter};
+use crate::collision::{GroundDecalSurface, PickOccluder, walk_layers};
 use crate::interior::WmoResidency;
 use crate::lighting::SharedLightBuffer;
-use crate::liquid::{spawn_liquids, LiquidAssets};
+use crate::liquid::{LiquidAssets, spawn_liquids};
 use crate::model_render::MaterialCache;
 use crate::schedule::WorldStage;
 use crate::view::WorldCamera;
 use crate::vis_chain::VisChainOnly;
 use crate::world_map::CurrentMap;
-use benilla_assets::materials::{TerrainExtension, TerrainMaterial};
 use benilla_assets::MapCatalogRes;
 use benilla_assets::RenderConfig;
+use benilla_assets::materials::{TerrainExtension, TerrainMaterial};
 use benilla_assets::{m2_url, wmo_url};
 
 mod claims;
-pub use claims::{ClaimQuery, DoodadClaimed, DoodadReleased, PlacementClaims};
+mod partitions;
+mod retirement;
+pub use claims::{
+    ClaimQuery, DoodadClaimed, DoodadReleased, PlacementClaims, WmoPropClaimed, WmoPropClaims,
+    WmoPropKey, WmoPropQuery, WmoPropReleased,
+};
+pub use partitions::{
+    RetireWmoPart, WmoPartRegion, WmoPartRetired, WmoPartSnapshot, WmoPartSpec, WmoPartitionSpec,
+    WmoPartitions, WmoParts,
+};
+pub use retirement::{RestoreWmos, RetireWmo, WmoPlacementSnapshot, WmoPlacements, WmoRetired};
 
 mod collider;
 mod furnish;
@@ -41,21 +51,26 @@ pub(crate) mod window;
 
 use collider::{finish_colliders, impassable_wall_data, terrain_collider_data};
 use furnish::furnish_tile_cells;
-use merge::{flush_static_merge, StaticMerge};
+use merge::{StaticMerge, flush_static_merge};
 use spawn::prop_light::WmoDoodadInst;
 use spawn::spawn_loaded_placements;
-use weld::{flush_hull_welds, HullWelds};
+use weld::{HullWelds, flush_hull_welds};
 pub use window::StreamWindow;
 // The WMO prop-light items, for the interior classifier and the app's WMO props.
-pub use spawn::prop_light::{fold_interior_probe, hex_word, interior_light_up, PropLobeLight};
+pub use spawn::prop_light::{
+    PropLight, PropLobeLight, fold_interior_probe, hex_word, interior_light_up,
+};
 // The placed-model assembler and off-thread collider build, shared with WMO gameobject props.
-pub use collider::{build_collider_task, placement_collider_data, PendingCollider};
-pub use spawn::{m2_anim_bound, m2_fade, point_light, spawn_model_entities, SpawnedModel};
+pub use collider::{PendingCollider, build_collider_task, placement_collider_data};
+pub use spawn::{
+    SpawnedModel, frozen_interior_materials, m2_anim_bound, m2_fade, point_light,
+    spawn_model_entities,
+};
 // The position queries and the area authority.
 use queries::update_current_area;
 pub use queries::{
-    area_id_under, doodad_ground_shade, ground_effect_under, terrain_height_under,
-    terrain_height_under_cached, AreaAuthoritySet, CurrentArea, ShadeResolve,
+    AreaAuthoritySet, CurrentArea, ShadeResolve, area_id_under, doodad_ground_shade,
+    ground_effect_under, terrain_height_under, terrain_height_under_cached,
 };
 
 /// Wall-clock per frame for spawning streamed tiles and placements before the rest waits a frame;
@@ -130,6 +145,7 @@ struct TileState {
 pub(crate) struct Placements {
     /// By MDDF/MODF uniqueId.
     by_id: HashMap<u32, Placement>,
+    suppressed: std::collections::HashSet<(u32, u32)>,
     /// The material dedup, so submeshes sharing a look share one handle and batch.
     materials: MaterialCache,
     /// Placements awaiting their model plus WMO props awaiting their M2s; at zero the spawner skips
@@ -150,8 +166,12 @@ impl Placements {
 /// A shared placement: its model, transform and spawned entities.
 struct Placement {
     model: ModelHandle,
+    map: u32,
+    claimed_props: Vec<WmoPropKey>,
+    prop_claims: WmoPropClaims,
     /// Claimed placements are already settled, own no engine geometry, and never hand off.
     claimed: bool,
+    suppressed: bool,
     transform: Transform,
     /// Spawned submesh entities, WMO prop submeshes included so they despawn together.
     entities: Vec<Entity>,
@@ -377,6 +397,8 @@ pub(crate) struct TerrainPlugin;
 
 impl Plugin for TerrainPlugin {
     fn build(&self, app: &mut App) {
+        retirement::plugin(app);
+        partitions::plugin(app);
         // Defaulted here, so a program with no game boots and streams around the camera.
         app.init_resource::<ViewFocus>()
             .init_resource::<WorldLoadProgress>()
@@ -384,6 +406,9 @@ impl Plugin for TerrainPlugin {
             .init_resource::<StreamActivity>()
             .init_resource::<Placements>()
             .init_resource::<PlacementClaims>()
+            .init_resource::<WmoPropClaims>()
+            .add_message::<WmoPropClaimed>()
+            .add_message::<WmoPropReleased>()
             .add_message::<DoodadClaimed>()
             .add_message::<DoodadReleased>()
             .init_resource::<HullWelds>()
@@ -396,6 +421,9 @@ impl Plugin for TerrainPlugin {
             .add_systems(
                 Update,
                 (
+                    partitions::transactions,
+                    retirement::retire_wmos,
+                    partitions::prepare,
                     finish_colliders,
                     stream_terrain,
                     furnish_tile_cells,
@@ -403,6 +431,8 @@ impl Plugin for TerrainPlugin {
                     flush_hull_welds,
                     flush_static_merge,
                     sync_interior_volumes,
+                    retirement::snapshots,
+                    partitions::snapshots,
                 )
                     .chain()
                     .in_set(WorldStage::Stream)
@@ -423,6 +453,15 @@ impl Plugin for TerrainPlugin {
                 crate::model_forms::furnish_model_forms
                     .in_set(WorldStage::Stream)
                     .before(spawn_loaded_placements),
+            )
+            // Ungated: release mode-facing handles on both logout and cross-map focus changes,
+            // before either the live publisher or a new map's preparation can run.
+            .add_systems(
+                Update,
+                partitions::release_scope
+                    .after(crate::schedule::WorldStage::Input)
+                    .before(partitions::transactions)
+                    .before(release_world),
             )
             // Leaving the world releases it; the gate above only stops it being maintained.
             .add_systems(
@@ -466,6 +505,7 @@ fn stream_terrain(
         Res<Time>,
         ResMut<StreamActivity>,
         Res<PlacementClaims>,
+        Res<WmoPropClaims>,
     ),
     liquid_assets: Option<Res<LiquidAssets>>,
     clutter: Option<Res<GroundClutter>>,
@@ -490,7 +530,7 @@ fn stream_terrain(
     ),
 ) {
     let (mut welds, mut static_merge, mut staticgx) = batchers;
-    let (mut materials, mut meshes, wdts, _time, mut activity, claims) = asset_stores;
+    let (mut materials, mut meshes, wdts, _time, mut activity, claims, prop_claims) = asset_stores;
     let (current_map, map_catalog, view) = location;
     // Idle until other plugins' startup has made the light buffer and the map catalog.
     let (Some(shared_light), Some(map_catalog)) = (shared_light, map_catalog) else {
@@ -557,6 +597,8 @@ fn stream_terrain(
                     doodad_set: g.doodad_set,
                     name_set: g.name_set,
                 },
+                map_id,
+                &prop_claims,
             );
             state.global_wmo = true;
         }
@@ -757,11 +799,18 @@ fn stream_terrain(
         // Placements register by uniqueId; their ground shade resolves at spawn by a global lookup,
         // since a doodad's origin may lie on another tile.
         for d in &adt.doodads {
-            register_doodad(placements, &asset_server, d, (tx, ty), &claims, &mut commands);
+            register_doodad(
+                placements,
+                &asset_server,
+                d,
+                (tx, ty),
+                &claims,
+                &mut commands,
+            );
             tile.placements.push(d.unique_id);
         }
         for w in &adt.wmos {
-            register_wmo(placements, &asset_server, w);
+            register_wmo(placements, &asset_server, w, map_id, &prop_claims);
             tile.placements.push(w.unique_id);
         }
 
@@ -943,7 +992,11 @@ fn register_doodad(
         d.unique_id,
         Placement {
             model: ModelHandle::M2(handle),
+            map: 0,
+            claimed_props: Vec::new(),
+            prop_claims: WmoPropClaims::default(),
             claimed,
+            suppressed: false,
             transform: Transform {
                 translation: wow_to_bevy(d.position),
                 rotation: placement_rotation(d.rotation),
@@ -963,7 +1016,13 @@ fn register_doodad(
 }
 
 /// Register one WMO placement, or bump its refcount; a 1.12 WMO placement has no scale.
-fn register_wmo(placements: &mut Placements, asset_server: &AssetServer, w: &WmoInstance) {
+fn register_wmo(
+    placements: &mut Placements,
+    asset_server: &AssetServer,
+    w: &WmoInstance,
+    map: u32,
+    prop_claims: &WmoPropClaims,
+) {
     if let Some(p) = placements.by_id.get_mut(&w.unique_id) {
         p.refs += 1;
         return;
@@ -973,7 +1032,11 @@ fn register_wmo(placements: &mut Placements, asset_server: &AssetServer, w: &Wmo
         w.unique_id,
         Placement {
             model: ModelHandle::Wmo(handle),
+            map,
+            claimed_props: Vec::new(),
+            prop_claims: prop_claims.clone(),
             claimed: false,
+            suppressed: false,
             transform: Transform {
                 translation: wow_to_bevy(w.position),
                 rotation: placement_rotation(w.rotation),
@@ -989,7 +1052,13 @@ fn register_wmo(placements: &mut Placements, asset_server: &AssetServer, w: &Wmo
             owner: (0, 0), // unread for WMOs: their prop hulls weld per placement
         },
     );
-    placements.pending_spawns += 1;
+    if placements.suppressed.contains(&(map, w.unique_id)) {
+        let p = placements.by_id.get_mut(&w.unique_id).unwrap();
+        p.suppressed = true;
+        p.spawned = true;
+    } else {
+        placements.pending_spawns += 1;
+    }
 }
 
 /// Drop every streamed tile and the placements they reference, on a cross-map teleport or on
@@ -1149,7 +1218,7 @@ fn sync_interior_volumes(placements: Res<Placements>, mut vols: ResMut<WmoReside
             .by_id
             .values()
             .filter_map(|p| match (&p.model, p.spawned) {
-                (ModelHandle::Wmo(h), true) => Some(h.id()),
+                (ModelHandle::Wmo(h), true) if !p.suppressed => Some(h.id()),
                 _ => None,
             }),
     );
@@ -1174,10 +1243,9 @@ fn handoff_straddlers(
         .iter()
         .copied()
         .filter(|uid| {
-            placements
-                .by_id
-                .get(uid)
-                .is_some_and(|p| !p.claimed && p.owner == dead && matches!(p.model, ModelHandle::M2(_)))
+            placements.by_id.get(uid).is_some_and(|p| {
+                !p.claimed && p.owner == dead && matches!(p.model, ModelHandle::M2(_))
+            })
         })
         .map(|uid| (uid, None))
         .collect();
@@ -1259,6 +1327,11 @@ fn release_placement(
     };
     if drop_it {
         if let Some(p) = placements.by_id.remove(&uid) {
+            for key in p.claimed_props {
+                commands.queue(move |world: &mut World| {
+                    world.write_message(WmoPropReleased { key });
+                });
+            }
             if p.claimed {
                 commands.queue(move |world: &mut World| {
                     world.write_message(DoodadReleased { unique_id: uid });
@@ -1364,7 +1437,11 @@ mod straddler_tests {
     fn straddler(owner: (i32, i32), entities: Vec<Entity>) -> Placement {
         Placement {
             model: ModelHandle::M2(Default::default()),
+            map: 0,
+            claimed_props: Vec::new(),
+            prop_claims: WmoPropClaims::default(),
             claimed: false,
+            suppressed: false,
             transform: Transform::IDENTITY,
             entities,
             spawned: true,
@@ -1375,6 +1452,43 @@ mod straddler_tests {
             refs: 1,
             owner,
         }
+    }
+
+    #[test]
+    fn modd_releases_only_on_last_placement_reference() {
+        let mut world = World::new();
+        world.init_resource::<Messages<WmoPropReleased>>();
+        let mut placements = Placements::default();
+        let key = WmoPropKey {
+            map: 7,
+            placement: 42,
+            modd: 303,
+        };
+        let mut p = straddler((0, 0), vec![]);
+        p.refs = 2;
+        p.claimed_props.push(key);
+        placements.by_id.insert(42, p);
+        world.insert_resource(placements);
+        for expected in [0, 1] {
+            world
+                .run_system_once(
+                    |mut commands: Commands, mut placements: ResMut<Placements>| {
+                        release_placement(
+                            &mut commands,
+                            &mut placements,
+                            42,
+                            &mut StreamActivity::default(),
+                        );
+                    },
+                )
+                .unwrap();
+            assert_eq!(
+                world.resource::<Messages<WmoPropReleased>>().len(),
+                expected
+            );
+        }
+        assert!(world.resource::<Placements>().by_id.is_empty());
+        assert_eq!(world.resource::<Placements>().pending_spawns, 0);
     }
 
     fn run_handoff(world: &mut World, dead: (i32, i32), uids: Vec<u32>, merge_on: bool) {

@@ -34,14 +34,16 @@ use bevy::math::Dir3;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
-use super::level;
 use super::{Attached, Ball, BallSpin, BallState, Bumped, Collectible, Phase, RunEntity};
 
-pub(super) const CORE_RADIUS: f32 = level::START_RADIUS * 0.85;
+/// The brass core's radius: fixed for a level, a little under the radius it starts at.
+pub(super) fn core_radius(start_radius: f32) -> f32 {
+    start_radius * 0.85
+}
 
 /// Shared seating/render radius: only buried credited volume grows the shell.
-pub(super) fn shell_radius(buried_volume: f32) -> f32 {
-    (CORE_RADIUS.powi(3) + 0.55 * buried_volume).cbrt()
+pub(super) fn shell_radius(start_radius: f32, buried_volume: f32) -> f32 {
+    (core_radius(start_radius).powi(3) + 0.55 * buried_volume).cbrt()
 }
 
 /// Angular-speed scale and radius taper: omega = base / sqrt(1 + taper*r).
@@ -128,24 +130,34 @@ fn traction(
     flat
 }
 
-fn turn_rate(radius: f32) -> f32 {
-    2.2 / (1.0 + 0.035 * (radius - level::START_RADIUS).max(0.0))
+fn turn_rate(radius: f32, start_radius: f32) -> f32 {
+    2.2 / (1.0 + 0.035 * (radius - start_radius).max(0.0))
 }
 
 /// Maximum reachable step above the full-radius ground support.
-fn step_height(radius: f32) -> f32 {
-    0.2 + 0.45 * radius
+pub(super) fn step_height(radius: f32) -> f32 {
+    // At city scale a round clump rolls onto low roofs/terraces; small-scale handling is
+    // unchanged. The reachable lift remains below the ball's radius.
+    let base = 0.2 + 0.45 * radius;
+    let blend = ((radius - 12.) / 8.).clamp(0., 1.);
+    base + (radius * 0.95 - base) * blend
 }
 
 pub(super) fn plugin(app: &mut App) {
     app.init_resource::<CorePop>()
         .init_resource::<StallTrace>()
+        .init_resource::<Shown>()
         .add_systems(OnEnter(Phase::Ready), spawn_ball.after(super::reset_run))
         .add_systems(
             Update,
             (
                 drop_stray_buttons.before(drive_ball),
                 sync_visuals.after(super::collect::collect),
+                present
+                    .after(sync_visuals)
+                    .after(super::city_support::guard)
+                    .after(super::unstuck::Recovery)
+                    .before(super::camera::place_camera),
             )
                 .in_set(WorldStage::Input),
         );
@@ -168,6 +180,22 @@ struct PathProbe {
 pub(super) struct StallTrace {
     pub input: bool,
     pub hits: Vec<String>,
+    /// For `glitch.rs`: this frame's pre-sweep step lift (yards), the support that settled the
+    /// ball (`Support`), the engine floor collider it rested on, and the hardest wall closing.
+    pub lift: f32,
+    pub support: Support,
+    pub floor: Option<Entity>,
+    pub closing: f32,
+}
+
+/// Which surface held the ball up at the end of `drive_ball`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum Support {
+    #[default]
+    Air,
+    Terrain,
+    Floor,
+    Prop,
 }
 
 #[derive(bevy::ecs::system::SystemParam)]
@@ -177,6 +205,22 @@ pub(super) struct ProbeParams<'w, 's> {
     probe_stage: Local<'s, Option<usize>>,
     path: Local<'s, PathProbe>,
     trace: ResMut<'w, StallTrace>,
+    fresh_solids: Query<'w, 's, (), (Added<Collectible>, Without<Attached>)>,
+    solids: Query<
+        'w,
+        's,
+        (
+            &'static Transform,
+            &'static Collectible,
+            Has<super::design::Gate>,
+        ),
+        (
+            Without<Attached>,
+            Without<super::collect::Shed>,
+            Without<Ball>,
+            Without<BallSpin>,
+        ),
+    >,
     loose: Query<
         'w,
         's,
@@ -239,7 +283,10 @@ fn spawn_ball(
         ClumpShell,
         Mesh3d(meshes.add(shell_mesh)),
         MeshMaterial3d(shell_mat),
-        Transform::from_scale(Vec3::splat(shell_radius(ball.buried_volume))),
+        Transform::from_scale(Vec3::splat(shell_radius(
+            ball.start_radius,
+            ball.buried_volume,
+        ))),
         Visibility::Hidden,
         ChildOf(spin),
     ));
@@ -247,7 +294,7 @@ fn spawn_ball(
         BallCore,
         Mesh3d(mesh),
         MeshMaterial3d(material),
-        Transform::from_scale(Vec3::splat(CORE_RADIUS)),
+        Transform::from_scale(Vec3::splat(core_radius(ball.start_radius))),
         Visibility::default(),
         ChildOf(spin),
     ));
@@ -390,6 +437,11 @@ fn footing(
     let Some(centre) = world.terrain_height_under(at) else {
         return floor_rest(collision, at, radius).map(|rest| (rest, Vec2::ZERO));
     };
+    // The ADT continues above underground WMO rooms. It is not a floor for a
+    // body below it: prefer nearby walking geometry, or wait for it to stream.
+    if centre > at.y + 0.1 {
+        return floor_rest(collision, at, radius).map(|h| (h, Vec2::ZERO));
+    }
     let mut rest = centre + radius;
     let mut gradient = Vec2::ZERO;
     for (ring, fraction) in [0.45_f32, 0.9].into_iter().enumerate() {
@@ -412,32 +464,133 @@ fn footing(
 
 /// Full-radius sphere support from walkable collision surfaces across its footprint.
 pub(super) fn floor_rest(world: &WorldCollision<'_, '_>, centre: Vec3, radius: f32) -> Option<f32> {
+    floor_support(world, centre, radius).map(|(h, _)| h)
+}
+
+/// [`floor_rest`] and the collider that supplies it.
+pub(super) fn floor_support(
+    world: &WorldCollision<'_, '_>,
+    centre: Vec3,
+    radius: f32,
+) -> Option<(f32, Entity)> {
+    let _profile = super::profile::span("ball::floor_support");
     // Cast from the reachable step height above the bottom, not above the head:
     // an upper storey/ceiling must never pull the ball up through the inn.
     let origin_y = centre.y - radius + step_height(radius) + 0.05;
-    let mut rest: Option<f32> = None;
-    // Rings dense enough that a step edge at any distance from the centre is sampled close to its
-    // true support curve: between neighbouring rings the lift error stays inside the 0.85r the
-    // horizontal sweep keeps, so the ball always rides up before the sweep meets the edge.
-    for fraction in [0.0_f32, 0.3, 0.5, 0.7, 0.85, 0.95, 0.99] {
-        let d = radius * fraction;
-        let lift = (radius * radius - d * d).sqrt();
-        for i in 0..if fraction == 0.0 { 1 } else { 12 } {
-            let angle = i as f32 * std::f32::consts::TAU / 12.0;
-            let origin = Vec3::new(
-                centre.x + d * angle.cos(),
-                origin_y,
-                centre.z + d * angle.sin(),
-            );
-            if let Some(hit) = world.ray_body(origin, Dir3::NEG_Y, 4.0 + 2.0 * radius) {
-                if hit.normal.y > 0.6 {
-                    let height = origin.y - hit.distance + lift;
-                    rest = Some(rest.map_or(height, |h| h.max(height)));
+    ring_support(radius, |offset| {
+        let origin = Vec3::new(centre.x + offset.x, origin_y, centre.z + offset.y);
+        world
+            .ray_body(origin, Dir3::NEG_Y, 4.0 + 2.0 * radius)
+            .filter(|hit| hit.normal.y > 0.6)
+            .map(|hit| (origin.y - hit.distance, hit.normal, hit.entity))
+    })
+}
+
+/// The D6 footprint: a centre ray and rings at 0.3, 0.5, 0.7, 0.85, 0.95 and 0.99 r along 12
+/// spokes, each walkable hit lifted by the sphere's cap at its offset. Fixed rings alone climb an
+/// edge as a staircase (the support only rises when the next ring crosses it, up to 0.2 r in one
+/// frame), so where a spoke's sample stands higher than the plane of the sample inside it
+/// predicts, an edge lies between them and four bisection samples find it: the centre then
+/// follows the sphere's own contact circle over steps, curbs and box tops. `sample(offset)`
+/// returns a walkable surface's height, normal and owner under `offset` (world x, z).
+pub(super) fn ring_support<T: Copy>(
+    radius: f32,
+    mut sample: impl FnMut(Vec2) -> Option<(f32, Vec3, T)>,
+) -> Option<(f32, T)> {
+    const RINGS: [f32; 6] = [0.3, 0.5, 0.7, 0.85, 0.95, 0.99];
+    fn keep<T>(rest: &mut Option<(f32, T)>, height: f32, owner: T) {
+        if rest.as_ref().is_none_or(|(h, _)| height > *h) {
+            *rest = Some((height, owner));
+        }
+    }
+    let lift = |d: f32| (radius * radius - d * d).max(0.0).sqrt();
+    let tolerance = 0.02 + 0.01 * radius;
+    let mut rest = None;
+    let centre = sample(Vec2::ZERO);
+    if let Some((y, _, owner)) = centre {
+        keep(&mut rest, y + radius, owner);
+    }
+    for i in 0..12 {
+        let angle = i as f32 * std::f32::consts::TAU / 12.0;
+        let dir = Vec2::new(angle.cos(), angle.sin());
+        // The height a walkable plane through (`from`, `y`) reaches at `d` along this spoke.
+        let along =
+            |y: f32, n: Vec3, from: f32, d: f32| y - (n.x * dir.x + n.z * dir.y) / n.y * (d - from);
+        let mut inner = (0.0, centre.map(|(y, n, _)| (y, n)));
+        for fraction in RINGS {
+            let d = radius * fraction;
+            let hit = sample(dir * d);
+            if let Some((y, n, owner)) = hit {
+                keep(&mut rest, y + lift(d), owner);
+                let edge = inner
+                    .1
+                    .is_none_or(|(iy, inormal)| y > along(iy, inormal, inner.0, d) + tolerance);
+                // Whatever the bisection finds lies on this surface between the two rings, so
+                // it cannot beat `y + lift(inner)`: skip edges that cannot raise the support.
+                let useful = rest
+                    .as_ref()
+                    .is_none_or(|(h, _)| y + tolerance + lift(inner.0) > *h);
+                if edge && useful {
+                    let (mut lo, mut hi) = (inner.0, d);
+                    for _ in 0..4 {
+                        let mid = 0.5 * (lo + hi);
+                        match sample(dir * mid) {
+                            Some((my, _, mo)) if (my - along(y, n, d, mid)).abs() <= tolerance => {
+                                hi = mid;
+                                keep(&mut rest, my + lift(mid), mo);
+                            }
+                            _ => lo = mid,
+                        }
+                    }
                 }
             }
+            inner = (d, hit.map(|(y, n, _)| (y, n)));
         }
     }
     rest
+}
+
+fn ready_height(current: f32, authored_feet: f32, radius: f32) -> f32 {
+    current.max(authored_feet + radius)
+}
+
+/// Landing integration also releases a grounded ball when its platform disappears.
+pub(super) fn settle_vertical(
+    mut y: f32,
+    mut vy: f32,
+    mut grounded: bool,
+    rest: f32,
+    snap: f32,
+    dt: f32,
+) -> (f32, f32, bool) {
+    let mut landed = false;
+    if y - rest <= snap && vy <= 0. {
+        landed = !grounded;
+        y = rest;
+        grounded = true;
+        if !landed {
+            vy = 0.;
+        }
+    } else {
+        vy -= GRAVITY * dt;
+        y += vy * dt;
+        grounded = false;
+        if y <= rest {
+            y = rest;
+            landed = true;
+            grounded = true;
+        }
+    }
+    if landed {
+        let impact = -vy;
+        vy = if impact > BOUNCE_ABOVE {
+            impact * BOUNCE
+        } else {
+            0.
+        };
+        grounded = vy <= 0.;
+    }
+    (y, vy, grounded)
 }
 
 /// The sphere the slide sweeps, rebuilt only when the ball has grown a percent.
@@ -478,13 +631,17 @@ pub(super) fn drive_ball(
     design: Res<super::design::Design>,
     run: Res<super::Run>,
     probe: ProbeParams,
-    keys: Res<ButtonInput<KeyCode>>,
+    input: (
+        Res<ButtonInput<KeyCode>>,
+        Res<super::pad::PadInput>,
+        ResMut<super::pad::DashCharge>,
+    ),
     phase: Res<State<Phase>>,
     loading: Res<crate::loading_screen::LoadingScreen>,
-    trophies: Query<
-        (Entity, &Transform, &Attached, &Collectible),
-        (Without<Ball>, Without<BallSpin>),
-    >,
+    clump: (
+        Res<super::lod::Clump>,
+        Query<(Entity, &Transform, &Attached, &Collectible), (Without<Ball>, Without<BallSpin>)>,
+    ),
     world: WorldPoint,
     collision: WorldCollision,
     mut ball: ResMut<BallState>,
@@ -494,6 +651,9 @@ pub(super) fn drive_ball(
     mut roots: Query<&mut Transform, (With<Ball>, Without<BallSpin>)>,
     mut spins: Query<&mut Transform, (With<BallSpin>, Without<Ball>)>,
 ) {
+    let _profile = super::profile::span("ball::drive_ball");
+    let (clump, trophies) = clump;
+    let (keys, pad, mut charge) = input;
     let (mut bumped, mut dash_events) = events;
     let ProbeParams {
         mut commands,
@@ -501,9 +661,19 @@ pub(super) fn drive_ball(
         mut path,
         mut trace,
         loose,
+        solids,
+        fresh_solids,
     } = probe;
+    let support = |pos, r| {
+        let engine = floor_rest(&collision, pos, r);
+        solids
+            .iter()
+            .filter_map(|(tf, c, gate)| super::collect::solid_rest(tf, c, pos, r, gate))
+            .chain(engine)
+            .max_by(f32::total_cmp)
+    };
     let live = *phase.get() == Phase::Playing && !loading.covering();
-    let ready = *phase.get() == Phase::Ready;
+    let ready = matches!(phase.get(), Phase::Ready | Phase::Select);
     let dt = time.delta_secs().min(MAX_DT);
     let radius = ball.radius;
     let mut reset_clump = false;
@@ -516,6 +686,21 @@ pub(super) fn drive_ball(
         }
     }
 
+    // Recipes author FEET, BallState stores the CENTRE. At r>.4545 the
+    // reachable-step ray of a feet-height centre starts below the very floor
+    // whose arrival Ready waits for, permanently closing the floor_ready gate.
+    if ready && design.start_indoors && !ball.floor_ready {
+        ball.pos.y = ready_height(ball.pos.y, design.start[2], radius);
+    }
+    if ready || !fresh_solids.is_empty() {
+        let from = ball.pos;
+        let pos = super::collect::resolve_solid_overlaps(from, radius, solids.iter());
+        if pos.distance_squared(from) > 1e-6 {
+            info!("azeroll solid overlap resolved on spawn/Ready: {from:?} -> {pos:?} r={radius}");
+            ball.pos = pos;
+            ball.vel = Vec3::ZERO;
+        }
+    }
     // Until the terrain under the ball is loaded, hold it where it is.
     let Some((rest0, slope)) = footing(&world, &collision, ball.pos, radius) else {
         ball.vel = Vec3::ZERO;
@@ -527,18 +712,36 @@ pub(super) fn drive_ball(
     let mut pos = ball.pos;
     let mut vel = ball.vel;
     let mut grounded = ball.grounded;
-    let start = wow_to_bevy(design.start);
+    let start = design.leash_centre();
+    let leash = design.leash_radius();
 
     if ready {
         // Waiting at the start: sit on whatever the ground turns out to be.
         vel = Vec3::ZERO;
-        pos.y = floor_rest(&collision, pos, radius).map_or(rest0, |h| h.max(rest0));
+        let floor = support(pos, radius);
+        // An indoor start is supported once the building's floor (not the terrain under it, which
+        // the support rays also hit) has loaded: a floor at the authored height.
+        let on_floor = design.start_indoors && floor.is_some_and(|h| h >= design.start[2]);
+
+        if on_floor || !design.start_indoors {
+            ball.floor_ready = true;
+        }
+        pos.y = match floor {
+            Some(h) if on_floor || !design.start_indoors => h.max(rest0),
+            // Until then hold the authored height: settling on the terrain would put the ball
+            // under the floor, out of the support rays' reach for good.
+            _ if design.start_indoors => pos.y.max(design.start[2]),
+            Some(h) => h.max(rest0),
+            None => rest0,
+        };
         grounded = true;
     } else if dt > 0.0 {
         ball.stun = (ball.stun - dt).max(0.0);
 
-        // Tank inputs: lateral keys turn the heading rather than strafing.
+        // Tank inputs: lateral keys turn the heading rather than strafing. The pad adds its own
+        // roll, turn and (both sticks sideways) strafe on top.
         let mut input = Vec2::ZERO;
+        let mut strafe = 0.0;
         if live {
             if keys.any_pressed([KeyCode::KeyW, KeyCode::ArrowUp]) {
                 input.y += 1.0;
@@ -552,6 +755,8 @@ pub(super) fn drive_ball(
             if keys.any_pressed([KeyCode::KeyA, KeyCode::ArrowLeft]) {
                 input.x -= 1.0;
             }
+            input = (input + Vec2::new(pad.turn, pad.forward)).clamp(Vec2::NEG_ONE, Vec2::ONE);
+            strafe = pad.strafe;
         }
         // Deterministic entrance regression route; normal play never enters this branch.
         if live && crate::webenv::var("WOW_AZEROLL_FLOOR_TEST").is_some() {
@@ -675,18 +880,23 @@ pub(super) fn drive_ball(
                 }
             }
         }
-        trace.input = input.y != 0.0;
+        trace.input = input.y != 0.0 || strafe != 0.0;
         trace.hits.clear();
+        trace.lift = 0.0;
+        trace.closing = 0.0;
         let debug = crate::webenv::var("WOW_AZEROLL_STALL_DEBUG").is_some();
         let radius = ball.radius;
-        let turn_rate = turn_rate(radius);
+        let turn_rate = turn_rate(radius, ball.start_radius);
         ball.heading -= input.x * turn_rate * dt;
-        if live && keys.just_pressed(KeyCode::Space) {
+        if live && (keys.just_pressed(KeyCode::Space) || pad.quick_turn) {
             ball.heading += std::f32::consts::PI;
         }
         ball.heading = ball.heading.rem_euclid(std::f32::consts::TAU);
         let (sy, cy) = ball.heading.sin_cos();
-        let wish = Vec3::new(-sy, 0.0, -cy) * input.y;
+        let ahead = Vec3::new(-sy, 0.0, -cy);
+        let mut wish = (ahead * input.y
+            + Vec3::new(cy, 0.0, -sy) * strafe * super::pad::STRAFE_SCALE)
+            .clamp_length_max(1.0);
         let was_dashing = ball.dash > 0.0;
         let was_cooling = ball.dash_cooldown > 0.0;
         ball.dash = (ball.dash - dt).max(0.0);
@@ -697,22 +907,35 @@ pub(super) fn drive_ball(
         if was_cooling && ball.dash_cooldown == 0.0 {
             dash_events.write(super::Dash::Ready);
         }
-        if live
-            && wish != Vec3::ZERO
-            && ball.dash_cooldown == 0.0
-            && keys.any_just_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight])
-        {
-            ball.dash = 0.65;
+        // The dash is wound up: press (Shift, the pad's A, or the sticks waggled) arms it, a hold
+        // past a tap scrambles the Prince and holds the ball back, and release or the full
+        // 0.45 s bursts it, longer and harder for the charge. A tap is the dash it always was.
+        let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
+        let charged = charge.step(
+            dt,
+            live && (shift || pad.dash_held),
+            ball.dash_cooldown == 0.0 && ball.dash == 0.0 && (wish != Vec3::ZERO || pad.dash_held),
+            live,
+        );
+        if charged.windup {
+            dash_events.write(super::Dash::WindUp);
+        }
+        if let Some(c) = charged.burst {
+            ball.dash = 0.65 * (1.0 + super::pad::BURST_LONGER * c);
             ball.dash_cooldown = 1.8;
+            charge.boost = c;
+            charge.forced = wish == Vec3::ZERO;
             dash_events.write(super::Dash::Started);
         }
         let sprint = live && ball.dash > 0.0;
+        if !sprint {
+            charge.forced = false;
+        } else if charge.forced && wish == Vec3::ZERO {
+            // A burst with no stick pushed (the waggle, the A button) rolls straight ahead.
+            wish = ahead;
+        }
 
-        let moment = trophies
-            .iter()
-            .fold(Vec3::ZERO, |sum, (_, tf, attached, thing)| {
-                sum + tf.transform_point(thing.center) * attached.volume
-            });
+        let moment = clump.moment;
         let com = if reset_clump {
             Vec3::ZERO
         } else {
@@ -721,9 +944,20 @@ pub(super) fn drive_ball(
         let eccentricity = (com.length() / radius).min(0.3);
         let inertia = 1.0 + 2.0 * eccentricity;
         let limp = (com.y / radius).clamp(-0.25, 0.25);
-        let top = top_speed(radius) * (1.0 - 0.3 * limp) * if sprint { SPRINT } else { 1.0 };
+        let full = top_speed(radius) * (1.0 - 0.3 * limp) * if sprint { SPRINT } else { 1.0 };
+        // Winding up holds the ball back; the pull it brakes and builds with is the unheld one's.
+        let top = if charge.winding() {
+            full * super::pad::WINDUP_SLOW
+        } else {
+            full
+        };
         let reach = REACH_BASE + REACH_PER_RADIUS * radius.min(REACH_RADIUS_CAP);
-        let accel = top / (reach * inertia) * if sprint { 1.3 } else { 1.0 };
+        let accel = full / (reach * inertia)
+            * if sprint {
+                1.3 * (1.0 + super::pad::BURST_PULL * charge.boost)
+            } else {
+                1.0
+            };
         let stun_scale = 1.0 - 0.8 * (ball.stun / STUN_MAX).clamp(0.0, 1.0);
         let grip = if grounded { 1.0 } else { AIR_CONTROL } * stun_scale;
 
@@ -744,8 +978,9 @@ pub(super) fn drive_ball(
         if flat.length_squared() > 1.0e-6 {
             let ahead = pos + flat * dt;
             if grounded {
-                if let Some(rest) = floor_rest(&collision, ahead, radius) {
+                if let Some(rest) = support(ahead, radius) {
                     if rest > pos.y && rest - pos.y <= step_height(radius) {
+                        trace.lift = rest - pos.y;
                         pos.y = rest;
                     }
                 }
@@ -785,7 +1020,7 @@ pub(super) fn drive_ball(
                     || crate::webenv::var("WOW_AZEROLL_SLIDE_DEBUG").is_some())
                 && run.elapsed.fract() < dt
             {
-                let ahead_rest = floor_rest(&collision, ahead, radius);
+                let ahead_rest = support(ahead, radius);
                 info!(
                     "azeroll floor-test: slide from={from:?} to={:?} flat={flat:?} wall={wall:?} \
                      closing={closing:.2} ahead_rest={ahead_rest:?} y={:.3} terrain_rest={:?} \
@@ -793,7 +1028,7 @@ pub(super) fn drive_ball(
                     out.position,
                     pos.y,
                     footing(&world, &collision, pos, radius).map(|f| f.0),
-                    floor_rest(&collision, pos, radius)
+                    support(pos, radius)
                 );
             }
             pos.x = out.position.x;
@@ -808,6 +1043,7 @@ pub(super) fn drive_ball(
                 None => flat,
             };
         }
+        trace.closing = closing;
         if closing > WALL_BUMP_MIN {
             bumped.write(Bumped {
                 entity: None,
@@ -822,18 +1058,17 @@ pub(super) fn drive_ball(
         // The soft leash around the start.
         let off = Vec3::new(pos.x - start.x, 0.0, pos.z - start.z);
         let dist = off.length();
-        if dist > level::LEASH * LEASH_SOFT {
+        if dist > leash * LEASH_SOFT {
             let n = off / dist;
             let outward = flat.dot(n);
             if outward > 0.0 {
-                let held = ((dist - level::LEASH * LEASH_SOFT)
-                    / (level::LEASH * (1.0 - LEASH_SOFT)))
-                    .clamp(0.0, 1.0);
+                let held =
+                    ((dist - leash * LEASH_SOFT) / (leash * (1.0 - LEASH_SOFT))).clamp(0.0, 1.0);
                 flat -= n * outward * held;
             }
-            if dist > level::LEASH {
-                pos.x = start.x + n.x * level::LEASH;
-                pos.z = start.z + n.z * level::LEASH;
+            if dist > leash {
+                pos.x = start.x + n.x * leash;
+                pos.z = start.z + n.z * leash;
             }
         }
 
@@ -850,38 +1085,31 @@ pub(super) fn drive_ball(
         match footing(&world, &collision, pos, radius) {
             Some((terrain_rest, _)) => {
                 let mut rest = terrain_rest;
-                if let Some(floor) = floor_rest(&collision, pos, radius) {
-                    rest = rest.max(floor);
+                trace.support = Support::Terrain;
+                trace.floor = None;
+                let top = solids
+                    .iter()
+                    .filter_map(|(tf, c, gate)| {
+                        super::collect::solid_rest(tf, c, pos, radius, gate)
+                    })
+                    .max_by(f32::total_cmp);
+                let floor = floor_support(&collision, pos, radius);
+                if let Some((h, entity)) = floor.filter(|(h, _)| *h >= rest) {
+                    rest = h;
+                    trace.support = Support::Floor;
+                    trace.floor = Some(entity);
+                }
+                if let Some(h) = top.filter(|h| *h > rest) {
+                    rest = h;
+                    trace.support = Support::Prop;
+                    trace.floor = None;
                 }
                 // Keep the support sphere round. Eccentric attachments drive roll inertia
                 // and a bounded visual limp; they cannot lever the collider through a floor.
                 let snap = 0.05 + 0.02 * radius + 0.8 * flat.length() * dt;
-                let mut landed = false;
-                if pos.y - rest <= snap && vel.y <= 0.0 {
-                    landed = !grounded;
-                    pos.y = rest;
-                    grounded = true;
-                    if !landed {
-                        vel.y = 0.0;
-                    }
-                } else {
-                    vel.y -= GRAVITY * dt;
-                    pos.y += vel.y * dt;
-                    grounded = false;
-                    if pos.y <= rest {
-                        pos.y = rest;
-                        landed = true;
-                        grounded = true;
-                    }
-                }
-                if landed {
-                    let impact = -vel.y;
-                    vel.y = if impact > BOUNCE_ABOVE {
-                        impact * BOUNCE
-                    } else {
-                        0.0
-                    };
-                    grounded = vel.y <= 0.0;
+                (pos.y, vel.y, grounded) = settle_vertical(pos.y, vel.y, grounded, rest, snap, dt);
+                if !grounded {
+                    trace.support = Support::Air;
                 }
             }
             None => {
@@ -895,7 +1123,7 @@ pub(super) fn drive_ball(
     } else {
         // Paused: no time passes, but stay on the terrain.
         if grounded {
-            pos.y = floor_rest(&collision, pos, radius).map_or(rest0, |h| h.max(rest0));
+            pos.y = support(pos, radius).map_or(rest0, |h| h.max(rest0));
         }
     }
     if live && crate::webenv::var("WOW_AZEROLL_FLOOR_TEST").is_some() && run.elapsed.fract() < dt {
@@ -930,7 +1158,7 @@ fn sync_visuals(
     >,
 ) {
     for (mut tf, mut vis) in &mut shells {
-        tf.scale = Vec3::splat(shell_radius(ball.buried_volume));
+        tf.scale = Vec3::splat(shell_radius(ball.start_radius, ball.buried_volume));
         *vis = if ball.buried_volume > 0.0 {
             Visibility::Inherited
         } else {
@@ -949,9 +1177,123 @@ fn sync_visuals(
         }
     }
     if let Ok(mut t) = cores.single_mut() {
-        let scale = Vec3::splat(CORE_RADIUS * (1.0 + pop.0));
+        let scale = Vec3::splat(core_radius(ball.start_radius) * (1.0 + pop.0));
         if t.scale != scale {
             t.scale = scale;
+        }
+    }
+}
+
+/// Render-only vertical blend. The physical centre may rise onto a step, settle onto a deck or
+/// snap down a curb in one frame; the clump that is drawn and the camera that frames it ease the
+/// jump's excess out instead (`Shown::offset` below the physics, decaying at [`SHOWN_RATE`]).
+/// Collection, support and every planner keep reading [`BallState::pos`].
+#[derive(Resource, Default)]
+pub(super) struct Shown {
+    /// Drawn centre minus physical centre, yards (vertical).
+    pub offset: f32,
+    /// The continuous part of the last frame's vertical motion, yards.
+    carried: f32,
+    last: Option<(Vec3, bool)>,
+    last_dt: f32,
+}
+
+/// Per second: about 95 % of a pop is gone in a quarter second.
+const SHOWN_RATE: f32 = 12.0;
+
+impl Shown {
+    /// Absorb this frame's vertical jerk beyond a small tolerance. A grounded ball's pop up (a
+    /// step, a settle) or snap down (a curb, a building's floor settle) is eased; so is an
+    /// airborne ball moved faster than either its own fall or its ballistic step `vy·dt` (the
+    /// surface rising under it off a roof's edge, a settle mid-fall). Falls, landings and bounces
+    /// are left as they are, and a teleport (Unstuck, a restart) resets the blend because the
+    /// camera cuts there anyway.
+    pub(super) fn step(&mut self, pos: Vec3, vy: f32, radius: f32, grounded: bool, dt: f32) -> f32 {
+        let Some((last, was_grounded)) = self.last.replace((pos, grounded)) else {
+            *self = Self {
+                last: Some((pos, grounded)),
+                ..default()
+            };
+            return 0.0;
+        };
+        if dt <= 0.0 {
+            self.last = Some((last, was_grounded));
+            return self.offset;
+        }
+        let flat = Vec2::new(pos.x - last.x, pos.z - last.z).length();
+        if flat > top_speed(radius) * SPRINT * 2.6 * dt + radius {
+            *self = Self {
+                last: Some((pos, grounded)),
+                ..default()
+            };
+            return 0.0;
+        }
+        let dy = pos.y - last.y;
+        // Without a previous frame's motion there is nothing to call a jump.
+        let predicted = if self.last_dt > 0.0 {
+            self.carried * dt / self.last_dt
+        } else {
+            dy
+        };
+        let tolerance = (0.02 * radius + 0.01) * dt * 60.0;
+        let (high, low) = if was_grounded {
+            (dy - predicted, dy - predicted)
+        } else {
+            let ballistic = vy * dt;
+            (dy - predicted.max(ballistic), dy - predicted.min(ballistic))
+        };
+        let absorbed = if high > tolerance {
+            high - tolerance
+        } else if low < -tolerance {
+            low + tolerance
+        } else {
+            0.0
+        };
+        // A landing ends the fall: what follows is measured from rest, not from the drop.
+        self.carried = if grounded && !was_grounded {
+            0.0
+        } else {
+            dy - absorbed
+        };
+        self.last_dt = dt;
+        // The jump is taken whole this frame and eased out from the next.
+        self.offset =
+            (self.offset * (-SHOWN_RATE * dt).exp() - absorbed).clamp(-0.9 * radius, 0.9 * radius);
+        if self.offset.abs() < 1e-4 {
+            self.offset = 0.0;
+        }
+        self.offset
+    }
+
+    /// The drawn centre.
+    pub(super) fn at(&self, ball: &BallState) -> Vec3 {
+        ball.pos + Vec3::Y * self.offset
+    }
+}
+
+/// After every system that may move the ball this frame: the drawn root follows the physics with
+/// the vertical blend. Outside play the blend is cleared and the root is left to its owners.
+pub(super) fn present(
+    time: Res<Time>,
+    phase: Res<State<Phase>>,
+    ball: Res<BallState>,
+    mut shown: ResMut<Shown>,
+    mut roots: Query<&mut Transform, (With<Ball>, Without<BallSpin>)>,
+) {
+    if *phase.get() != Phase::Playing {
+        *shown = default();
+        return;
+    }
+    let offset = shown.step(
+        ball.pos,
+        ball.vel.y,
+        ball.radius,
+        ball.grounded,
+        time.delta_secs(),
+    );
+    if offset != 0.0 {
+        if let Ok(mut t) = roots.single_mut() {
+            t.translation = shown.at(&ball);
         }
     }
 }
@@ -985,6 +1327,184 @@ fn drop_stray_buttons(
 mod handling_tests {
     use super::*;
 
+    /// Feed a path at 60 Hz; an airborne frame's vertical speed is its own motion (ballistic).
+    fn roll(shown: &mut Shown, path: &[(Vec3, bool)], r: f32) -> Vec<f32> {
+        let dt = 1.0 / 60.0;
+        let mut last: Option<f32> = None;
+        path.iter()
+            .map(|&(p, g)| {
+                let vy = if g {
+                    0.0
+                } else {
+                    last.map_or(0.0, |y| (p.y - y) / dt)
+                };
+                last = Some(p.y);
+                p.y + shown.step(p, vy, r, g, dt)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn an_edge_climb_follows_the_sphere_contact_circle() {
+        // A ledge of 0.6 r: ground for x < 0, the top beyond. Fixed rings alone were off by up to
+        // 0.2 r, rising in jumps whenever the next ring crossed the edge.
+        for r in [0.5_f32, 3.4, 25.0] {
+            let top = 0.6 * r;
+            let mut worst = 0.0_f32;
+            for step in 0..=200 {
+                let x = -r + step as f32 * r / 200.0;
+                let rest = ring_support(r, |o| {
+                    Some((if x + o.x >= 0.0 { top } else { 0.0 }, Vec3::Y, ()))
+                })
+                .unwrap()
+                .0;
+                let truth = r.max(top + (r * r - x * x).max(0.0).sqrt());
+                assert!(
+                    rest <= truth + 1e-4,
+                    "r={r} x={x}: {rest} above the true contact {truth}"
+                );
+                worst = worst.max(truth - rest);
+            }
+            assert!(
+                worst < 0.03 * r,
+                "r={r}: support lags the contact circle by {worst}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_slope_is_not_mistaken_for_an_edge() {
+        let mut samples = 0;
+        let rest = ring_support(2.0, |o| {
+            samples += 1;
+            let n = Vec3::new(-0.5, 1.0, 0.0).normalize();
+            Some((0.5 * o.x, n, ()))
+        });
+        assert_eq!(samples, 73, "no bisection on a plane");
+        assert!(rest.is_some());
+    }
+
+    #[test]
+    fn a_step_pop_is_eased_out_and_the_drawn_ball_never_jumps() {
+        let r = 4.0;
+        let mut path: Vec<_> = (0..10)
+            .map(|i| (Vec3::new(i as f32 * 0.3, r, 0.), true))
+            .collect();
+        // A 0.5r rise in one frame (an instant step-up), then flat on top.
+        path.extend((10..40).map(|i| (Vec3::new(i as f32 * 0.3, r * 1.5, 0.), true)));
+        let mut shown = Shown::default();
+        let drawn = roll(&mut shown, &path, r);
+        let worst = drawn
+            .windows(2)
+            .map(|w| (w[1] - w[0]).abs())
+            .fold(0., f32::max);
+        assert!(worst < 0.25 * r, "a drawn jump of {worst} yd");
+        assert!(
+            (drawn[39] - r * 1.5).abs() < 0.05 * r,
+            "settled at {}",
+            drawn[39]
+        );
+        assert!(
+            drawn.iter().all(|y| *y <= r * 1.5 + 1e-4),
+            "never overshoots the physics"
+        );
+    }
+
+    #[test]
+    fn a_steady_slope_and_a_landing_are_drawn_as_they_are() {
+        let r = 2.0;
+        let slope: Vec<_> = (0..30)
+            .map(|i| (Vec3::new(i as f32 * 0.3, r + i as f32 * 0.15, 0.), true))
+            .collect();
+        let mut shown = Shown::default();
+        let drawn = roll(&mut shown, &slope, r);
+        assert!(drawn
+            .iter()
+            .zip(&slope)
+            .all(|(d, (p, _))| (d - p.y).abs() < 1e-4));
+        // Falling, then landing: no blend below the ground.
+        let mut shown = Shown::default();
+        let fall: Vec<_> = (0..10)
+            .map(|i| (Vec3::new(0., 10. - i as f32 * 0.5, 0.), false))
+            .chain((0..5).map(|_| (Vec3::new(0., 5., 0.), true)))
+            .collect();
+        let drawn = roll(&mut shown, &fall, r);
+        assert!(drawn
+            .iter()
+            .zip(&fall)
+            .all(|(d, (p, _))| (d - p.y).abs() < 1e-4));
+    }
+
+    #[test]
+    fn landing_on_a_higher_surface_is_eased_too() {
+        let r = 50.0;
+        let mut shown = Shown::default();
+        let path = [
+            (Vec3::new(0., 170., 0.), true),
+            (Vec3::new(0.3, 169.99, 0.), false),
+            (Vec3::new(0.6, 169.97, 0.), false),
+            (Vec3::new(0.9, 184., 0.), true),
+            (Vec3::new(1.2, 184., 0.), true),
+        ];
+        let drawn = roll(&mut shown, &path, r);
+        assert!(drawn[3] - drawn[2] < 0.05 * r, "drawn {drawn:?}");
+    }
+
+    #[test]
+    fn an_airborne_snap_is_eased_but_a_bounce_is_not() {
+        let r = 27.0;
+        let dt = 1.0 / 60.0;
+        // Falling, then the deck under the ball rises 6.5 yd while it is still in the air.
+        let mut shown = Shown::default();
+        let mut drawn = vec![];
+        for (y, vy) in [(133.5, -6.0), (133.4, -6.3), (133.29, -6.6), (139.8, 4.0)] {
+            drawn.push(y + shown.step(Vec3::new(0., y, 0.), vy, r, false, dt));
+        }
+        assert!(drawn[3] - drawn[2] < 0.05 * r, "drawn {drawn:?}");
+        // A ballistic rise after a bounce is drawn as it is.
+        let mut shown = Shown::default();
+        for (i, y) in [100.0_f32, 100.25, 100.5, 100.74].into_iter().enumerate() {
+            let offset = shown.step(Vec3::new(0., y, 0.), 15.0 - i as f32 * 0.37, 1.0, false, dt);
+            assert!(offset.abs() < 1e-3, "bounce frame {i} offset {offset}");
+        }
+        // A settle that drops a falling ball onto the floor far below its fall is eased.
+        let mut shown = Shown::default();
+        let mut drawn = vec![];
+        for (y, vy, g) in [
+            (147.8, -6.0, false),
+            (147.7, -6.0, false),
+            (137.9, 0.0, true),
+        ] {
+            drawn.push(y + shown.step(Vec3::new(0., y, 0.), vy, r, g, dt));
+        }
+        assert!(drawn[1] - drawn[2] < 0.05 * r, "drawn {drawn:?}");
+    }
+
+    #[test]
+    fn a_teleport_resets_the_blend() {
+        let r = 3.0;
+        let mut shown = Shown::default();
+        let flat = [(Vec3::new(0., r, 0.), true), (Vec3::new(0.1, r, 0.), true)];
+        roll(&mut shown, &flat, r);
+        roll(&mut shown, &[(Vec3::new(0.2, 2. * r, 0.), true)], r);
+        assert!(shown.offset < 0.);
+        roll(&mut shown, &[(Vec3::new(200., r, 0.), true)], r);
+        assert_eq!(shown.offset, 0.);
+    }
+
+    #[test]
+    fn eaten_platform_releases_a_grounded_ball_and_settles_on_floor() {
+        let (mut y, mut vy, mut grounded) = (1., 0., true);
+        // An edible/Shed table is excluded, leaving the floor's full-radius rest.
+        (y, vy, grounded) = settle_vertical(y, vy, grounded, 0.3, 0.05, 0.016);
+        assert!(!grounded);
+        assert!(y < 1. && vy < 0.);
+        for _ in 0..150 {
+            (y, vy, grounded) = settle_vertical(y, vy, grounded, 0.3, 0.05, 0.016);
+            assert!(y >= 0.3, "cannot fall through the floor");
+        }
+        assert_eq!((y, vy, grounded), (0.3, 0., true));
+    }
     #[test]
     fn building_floor_supports_a_ball_over_a_terrain_hole() {
         use avian3d::prelude::{PhysicsPlugins, RigidBody};
@@ -1024,9 +1544,13 @@ mod handling_tests {
         app.update();
         app.world_mut()
             .run_system_once(|world: WorldPoint, collision: WorldCollision| {
-                for r in [0.25, 0.3, 0.6] {
+                assert!(
+                    floor_rest(&collision, Vec3::new(-1., 0., 0.), 0.5).is_none(),
+                    "feet mistaken for centre misses the floor"
+                );
+                for r in [0.25, 0.3, 0.5, 0.6, 1.2] {
                     for (x, floor) in [(-1.0, 0.0), (1.0, 0.4353)] {
-                        let at = Vec3::new(x, floor + r, 0.0);
+                        let at = Vec3::new(x, ready_height(floor, floor, r), 0.0);
                         assert!(world.terrain_height_under(at).is_none());
                         let (support, slope) =
                             footing(&world, &collision, at, r).expect("WMO floor over an ADT hole");
@@ -1080,15 +1604,15 @@ mod handling_tests {
             let mut position = Vec3::ZERO;
             let mut heading = 0.0_f32;
             for _ in 0..2400 {
-                heading += turn_rate(radius) * dt;
+                heading += turn_rate(radius, 0.25) * dt;
                 let wish = Vec3::new(-heading.sin(), 0.0, -heading.cos());
                 velocity = traction(velocity, wish, top, accel, 1.0, true, dt);
                 position += velocity * dt;
             }
-            let circle = velocity.length() / turn_rate(radius);
+            let circle = velocity.length() / turn_rate(radius, 0.25);
             println!(
                 "handling r={radius:.1} top={top:.3} turn_deg={:.2} t90={t90:.3} reverse90={reverse:.3} coast={coast:.3} steady_turn_radius={circle:.3} turn_speed={:.3} dash_top={:.3}",
-                turn_rate(radius).to_degrees(),
+                turn_rate(radius, 0.25).to_degrees(),
                 velocity.length(),
                 top * SPRINT
             );

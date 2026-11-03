@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use bevy::prelude::*;
 
-use super::collider::{build_collider_task, doodad_hulls_bare, PendingCollider};
+use super::collider::{PendingCollider, build_collider_task, doodad_hulls_bare};
 use crate::collision::PickOccluder;
 use crate::interact::WorldObject;
 use crate::model_render::ModelKind;
@@ -96,6 +96,10 @@ impl HullWelds {
     /// for them; an overcount only delays.
     pub(super) fn unflushed(&self) -> usize {
         self.tiles.len() + self.props.len()
+    }
+
+    pub(super) fn retire(&mut self, uid: u32) {
+        self.props.remove(&uid);
     }
 
     pub(super) fn clear(&mut self) {
@@ -204,8 +208,12 @@ mod tests {
 
     fn blank_placement() -> Placement {
         Placement {
+            map: 0,
+            claimed_props: Vec::new(),
+            prop_claims: crate::terrain_stream::WmoPropClaims::default(),
             model: ModelHandle::M2(Default::default()),
             claimed: false,
+            suppressed: false,
             transform: Transform::IDENTITY,
             entities: Vec::new(),
             spawned: true,

@@ -244,6 +244,9 @@ fn load_subject(internal: &str, site: Option<&Site>) -> Subject {
         benilla_assets::collision_tri_bounds(&group_collision_tris);
     let model = WmoModel {
         wmo_id: wmo_root_id(&root_bytes),
+        source_fingerprint: root_bytes.iter().fold(0xcbf29ce484222325u64, |h, b| {
+            (h ^ *b as u64).wrapping_mul(0x100000001b3)
+        }),
         submeshes: Vec::new(),
         submesh_group: Vec::new(),
         portal_vertices: portals.vertices.clone(),

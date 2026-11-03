@@ -347,12 +347,7 @@ fn launch(build: BuildId, extend: Option<Extension<'_>>) -> AppExit {
     // (`embedded://benilla_app/shaders/…`), so no build-machine path reaches the binary.
 
     app.add_plugins(benilla_world::boot::tuned_default_plugins(Window {
-        title: if azeroll {
-            "Azeroll"
-        } else {
-            "benilla"
-        }
-        .into(),
+        title: if azeroll { "Azeroll" } else { "benilla" }.into(),
         // Born in the player's display mode (`gxWindow` read straight off `config.toml`) rather
         // than flipped into it at `Startup`, which would flash on every launch and, under
         // gamescope, spend the first second in the input state fullscreen is meant to end.

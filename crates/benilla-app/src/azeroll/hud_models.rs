@@ -16,10 +16,10 @@
 //!   which reads as alive. Rapid pickups count into a combo ([`ItemBubble::combo`]).
 //! * The **Prince** is a second gnome, built for the corner alone ([`StagePrince`]): the world
 //!   Prince's display, standing at a fixed spot on a private stage far from the world, at a fixed,
-//!   larger scale, seen by a fixed camera. He never translates; his stock run/stand animation is
-//!   driven in place from the ball's state (rolling, how fast, dashing, a hard bump, a tier), as
-//!   Katamari's corner Prince runs on the spot while the ball rolls. The world Prince, who circles
-//!   the clump at his own tiny size, is not drawn here at all.
+//!   larger scale, seen by a fixed camera. He never translates: he copies the world Prince's
+//!   movement, pose hold and lean ([`prince_motion`]) and reacts to hits and tiers, so he runs,
+//!   scrambles and strains on the spot as Katamari's corner Prince does. The world Prince, who
+//!   circles the clump at his own tiny size, is not drawn here at all.
 //!
 //! Neither layer is on the world camera, so nothing here appears in the world view.
 
@@ -34,15 +34,16 @@ use bevy::ui_render::ui_material::UiMaterial;
 use bevy::ui_render::UiMaterialPlugin;
 
 use benilla_assets::materials::WowModelMaterial;
+use benilla_assets::{LockRecover, WorldAssets};
+use benilla_formats::load_creature_catalog;
 
-use super::ball::top_speed;
 use super::creatures::Prince;
 use super::units::{self, UnitSpec};
 use super::{
     BallState, Bumped, Collected, Collectible, Dash, Kind, Phase, Run, TierReached, TouchState,
     Touched,
 };
-use crate::creature_anim::{move_flags, EmoteAnim, MovementState, PlaySeq};
+use crate::creature_anim::{CastHold, EmoteAnim, MovementState, PlaySeq};
 use crate::loading_screen::LoadingScreen;
 use crate::net::NetEntity;
 use crate::portrait::{booth_view_shape, new_target_image_sized, PortraitPart};
@@ -50,6 +51,7 @@ use crate::portrait::{booth_view_shape, new_target_image_sized, PortraitPart};
 /// Render layers, past the engine's booth ladder (`portrait::UI_MODEL_CAM_LAYER_BASE` + 8 = 34).
 const ITEM_LAYER: usize = 40;
 const PRINCE_LAYER: usize = 41;
+const COMMISSIONER_LAYER: usize = 42;
 /// The render targets' edge, texels.
 const TARGET: u32 = 256;
 /// Where the item stage sits: far above the world, so no world camera or streamer meets it.
@@ -57,25 +59,44 @@ const STAGE: Vec3 = Vec3::new(0.0, 3000.0, 0.0);
 /// Where the corner Prince stands: far from the world and from the item stage, feet on the origin
 /// of his own little floor.
 const PRINCE_STAGE: Vec3 = Vec3::new(400.0, 3000.0, 0.0);
-/// His fixed model scale and facing: a gnome is about 1 yd tall at scale 1, and he is turned a
-/// little toward the playfield (screen left), as Katamari's corner Prince is.
-const PRINCE_SCALE: f32 = 1.0;
+/// Where the hub's commissioner stands: a third private stage, far from the other two. His render
+/// target is a 3:4 portrait for the speech-bubble window (`select::orrery`), and his camera frames
+/// a gnome from the knees up, a little low, so he looms.
+const COMMISSIONER_STAGE: Vec3 = Vec3::new(800.0, 3000.0, 0.0);
+const COMMISSIONER_TARGET: (u32, u32) = (288, 384);
+const COMMISSIONER_SCALE: f32 = 1.0;
+const COMMISSIONER_YAW: f32 = 0.18;
+const COMMISSIONER_DIST: f32 = 2.55;
+const COMMISSIONER_EYE: f32 = 0.55;
+const COMMISSIONER_LOOK: f32 = 0.78;
+/// `AnimationData` ids: EmoteTalk, EmoteTalkExclamation, EmoteCheer, EmoteLaugh.
+const ANIM_TALK: u16 = 60;
+const ANIM_EXCLAIM: u16 = 64;
+/// While a line types out he gestures at this interval, seconds.
+const TALK_EVERY: f32 = 1.7;
+/// His model scale, the world Prince's own, and his facing, turned a little toward the playfield
+/// (screen left) as Katamari's corner Prince is. The animation driver divides the run clip's rate
+/// by the model scale and picks Run or Sprint from the raw speed, so only the same scale lets the
+/// copied movement give the same gait at the same cadence; the camera is brought in to match.
+const PRINCE_SCALE: f32 = super::creatures::PRINCE_SCALE;
 const PRINCE_YAW: f32 = -0.45;
-/// The portrait camera: this far from him, this high, looking at this height of him; a little
-/// below his middle looking up gives the low three-quarter view. Field of view as [`FOV`].
-const PRINCE_DIST: f32 = 2.45;
-const PRINCE_EYE: f32 = 0.32;
-const PRINCE_LOOK: f32 = 0.5;
-/// His cadence while the ball rolls, as the speed the run clip is driven at (the clip runs at that
-/// speed over its move speed): the slowest trot, the fastest sprint, and the dash's extra.
-const STRIDE: (f32, f32) = (5.0, 13.0);
-const STRIDE_DASH: f32 = 1.3;
-/// The ball is rolling when its ground speed is above this, yd/s.
-const ROLLING: f32 = 0.25;
+/// How much of the world Prince's lean the corner shows: he leans toward the camera, so the full
+/// tilt pushes his head out of the frame.
+const LEAN_SHOWN: f32 = 0.6;
+/// The portrait camera: this far from him, this high, looking at this height of him, framed for a
+/// scale-1 gnome (about 1 yd tall) and multiplied by [`PRINCE_SCALE`]; a little below his middle
+/// looking up gives the low three-quarter view. Field of view as [`FOV`].
+const PRINCE_DIST: f32 = 2.75 * PRINCE_SCALE;
+const PRINCE_EYE: f32 = 0.32 * PRINCE_SCALE;
+const PRINCE_LOOK: f32 = 0.5 * PRINCE_SCALE;
 /// `AnimationData` ids played over his gait: StandWound (a hard bump) and EmoteCheer (a tier).
 const ANIM_WINCE: u16 = 8;
 const ANIM_CHEER: u16 = 68;
 /// The radius the item model is scaled to, and the camera's vertical field of view.
+/// Seconds a stage camera is awake before its bubble fades in: the first frames after a model
+/// appears or a camera wakes are empty glass.
+const PRINCE_SETTLE: f32 = 1.0;
+const WHO_SETTLE: f32 = 0.3;
 const FIT: f32 = 0.82;
 const FOV: f32 = 0.5;
 /// The item turns this fast, radians per second.
@@ -123,10 +144,13 @@ impl UiMaterial for HudMaterial {
 pub(super) struct HudModels {
     pub item: Handle<Image>,
     pub prince: Handle<Image>,
+    /// The hub's commissioner, a portrait target.
+    pub commissioner: Handle<Image>,
     /// A 1×1 texture for the materials that sample nothing.
     pub blank: Handle<Image>,
     item_cam: Entity,
     prince_cam: Entity,
+    commissioner_cam: Entity,
     /// The item stage's turning root.
     spinner: Entity,
 }
@@ -164,16 +188,83 @@ pub(super) struct ItemBubble {
     pub prince_ready: bool,
     /// 0..1: his bubble fades in after the camera wakes, so its first (empty) frames stay hidden.
     pub prince_alpha: f32,
+    /// Seconds his stage has been ready and awake: his bubble waits for his textures to stream in
+    /// (`PRINCE_SETTLE`) rather than show an empty glass for the first moments of a run.
+    prince_for: f32,
     since: f32,
     since_swap: f32,
     since_link: f32,
     since_wince: f32,
-    /// The run clip's current speed, smoothed: 0 when the ball is still.
-    stride: f32,
     pivot: Option<Entity>,
     yaw: f32,
     /// The stage's own clock, seconds, for the sway and the breathing.
     idle: f32,
+}
+
+/// The hub's commissioner, a gnome inventor on his own stage, driven by `select::orrery`: whether
+/// he is mid-line, a counter that bumps when something worth a cheer happens, and whether his
+/// parts exist yet.
+#[derive(Resource, Default)]
+pub(crate) struct Commissioner {
+    pub talking: bool,
+    /// Fizzwick's porthole is popping in during play (or the lost-run moment): his stage runs.
+    pub pop: bool,
+    /// Bumped by the hub for a cheer (a level unlocked, a star lit).
+    pub cheer: u32,
+    /// A one-shot gesture request from the verdict screen: an `AnimationData` id.
+    pub gesture: Option<u16>,
+    /// His mesh parts are on his layer.
+    pub ready: bool,
+    /// 0..1: fades in after the camera wakes, so his first (empty) frames stay hidden.
+    pub alpha: f32,
+    display: Option<u32>,
+    /// Seconds his camera has been awake, for the same settling.
+    awake_for: f32,
+    cheered: u32,
+    since_gesture: f32,
+    was_talking: bool,
+}
+
+/// The gnome displays a commissioner can wear: male gnome NPC appearances, lowest id first. The
+/// world Prince wears the very lowest, so the commissioner is the next with a helm if there is one
+/// (goggles and a tall hat suit an inventor), else the next.
+fn commissioner_display(catalog: &benilla_formats::CreatureCatalog) -> Option<u32> {
+    let mut gnomes: Vec<(u32, bool)> = catalog
+        .display_models()
+        .filter_map(|(d, _)| {
+            let m = catalog.model(d)?;
+            let path = m.model_path.to_ascii_lowercase().replace('/', "\\");
+            (path.starts_with("character\\gnome\\male\\gnomemale") && m.scale > 0.0)
+                .then(|| {
+                    m.npc_appearance
+                        .as_ref()
+                        .map(|a| (d, a.equipment[0] != 0 && a.equipment[3] != 0))
+                })
+                .flatten()
+        })
+        .collect();
+    gnomes.sort();
+    info!(
+        "azeroll commissioner: {} gnome displays, helmed ones: {:?}",
+        gnomes.len(),
+        gnomes
+            .iter()
+            .filter(|g| g.1)
+            .map(|g| g.0)
+            .take(12)
+            .collect::<Vec<_>>()
+    );
+    if let Some(over) = crate::webenv::var("WOW_AZEROLL_COMMISSIONER").and_then(|v| v.parse().ok())
+    {
+        return Some(over);
+    }
+    gnomes
+        .iter()
+        .skip(1)
+        .find(|g| g.1)
+        .or_else(|| gnomes.get(1))
+        .or_else(|| gnomes.first())
+        .map(|g| g.0)
 }
 
 #[derive(Component)]
@@ -183,6 +274,7 @@ pub(super) fn plugin(app: &mut App) {
     bevy::asset::embedded_asset!(app, "hud.wgsl");
     app.add_plugins(UiMaterialPlugin::<HudMaterial>::default())
         .init_resource::<ItemBubble>()
+        .init_resource::<Commissioner>()
         .add_systems(OnEnter(Phase::Ready), reset)
         .add_systems(
             Update,
@@ -191,6 +283,9 @@ pub(super) fn plugin(app: &mut App) {
                 stage_prince,
                 prince_reactions,
                 prince_motion,
+                stage_commissioner,
+                stage_family,
+                commissioner_acts,
                 animate,
             )
                 .chain()
@@ -203,6 +298,10 @@ pub(super) fn plugin(app: &mut App) {
 pub(super) fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     let item = images.add(new_target_image_sized(TARGET, TARGET));
     let prince = images.add(new_target_image_sized(TARGET, TARGET));
+    let commissioner = images.add(new_target_image_sized(
+        COMMISSIONER_TARGET.0,
+        COMMISSIONER_TARGET.1,
+    ));
     let blank = images.add(Image::new_fill(
         Extent3d {
             width: 1,
@@ -239,6 +338,7 @@ pub(super) fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     };
     let item_cam = cam(&mut commands, &item, ITEM_LAYER, -90);
     let prince_cam = cam(&mut commands, &prince, PRINCE_LAYER, -89);
+    let commissioner_cam = cam(&mut commands, &commissioner, COMMISSIONER_LAYER, -88);
     // Looking at the stage's origin from in front (the models face -Z) and a little above.
     let dist = FIT / (FOV * 0.5).sin() * 1.04;
     commands.entity(item_cam).insert(
@@ -249,15 +349,32 @@ pub(super) fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         Transform::from_translation(PRINCE_STAGE + Vec3::new(0.0, PRINCE_EYE, -PRINCE_DIST))
             .looking_at(PRINCE_STAGE + Vec3::Y * PRINCE_LOOK, Vec3::Y),
     );
+    // Likewise the commissioner's: in front of him, low and close, looking up at his chest.
+    commands.entity(commissioner_cam).insert(
+        Transform::from_translation(
+            COMMISSIONER_STAGE
+                + Vec3::new(
+                    0.0,
+                    COMMISSIONER_EYE * COMMISSIONER_SCALE,
+                    -COMMISSIONER_DIST * COMMISSIONER_SCALE,
+                ),
+        )
+        .looking_at(
+            COMMISSIONER_STAGE + Vec3::Y * COMMISSIONER_LOOK * COMMISSIONER_SCALE,
+            Vec3::Y,
+        ),
+    );
     let spinner = commands
         .spawn((Transform::from_translation(STAGE), Visibility::default()))
         .id();
     commands.insert_resource(HudModels {
         item,
         prince,
+        commissioner,
         blank,
         item_cam,
         prince_cam,
+        commissioner_cam,
         spinner,
     });
 }
@@ -287,6 +404,7 @@ fn item_swap(
             &Mesh3d,
             &MeshMaterial3d<WowModelMaterial>,
             Option<&MeshTag>,
+            Option<&benilla_world::interior::InteriorLit>,
         ),
         (
             Without<PortraitPart>,
@@ -332,12 +450,23 @@ fn item_swap(
                 benilla_world::mesh_tag::spawn_tag(0, 1.0),
                 rel,
             ));
-        } else if let Ok((pgt, mesh, mat, tag)) = plain.get(d) {
+        } else if let Ok((pgt, mesh, mat, tag, lit)) = plain.get(d) {
             let rel = Mat4::from(to_local * pgt.affine());
-            let tag = tag.map_or(benilla_world::mesh_tag::spawn_tag(0, 1.0), |t| {
-                benilla_world::mesh_tag::with_alpha(t.0, 1.0)
-            });
-            parts.push((mesh.0.clone(), mat.0.clone(), tag, rel));
+            // An interior-baked part's material and tag name a world probe slot that pickup
+            // releases (D30); the off-world stage takes the exterior lane instead.
+            let (mat, tag) = match lit {
+                Some(lit) if lit.is_bake() => (
+                    lit.exterior_material(),
+                    benilla_world::mesh_tag::spawn_tag(0, 1.0),
+                ),
+                _ => (
+                    &mat.0,
+                    tag.map_or(benilla_world::mesh_tag::spawn_tag(0, 1.0), |t| {
+                        benilla_world::mesh_tag::with_alpha(t.0, 1.0)
+                    }),
+                ),
+            };
+            parts.push((mesh.0.clone(), mat.clone(), tag, rel));
         }
     }
     if parts.is_empty() {
@@ -399,7 +528,10 @@ struct StagePrince;
 ///   by the world camera's frustum and would hide a unit 3000 yd up every frame;
 /// * no [`RunEntity`](super::RunEntity): he outlives a restart;
 /// * no `Collectible`, `Prince` or `Push`: no azeroll system (AI, bumps, pickup, the world Prince's
-///   stagecraft) queries him.
+///   stagecraft) queries him;
+/// * [`StageRig`](crate::portrait::StageRig): `creature_anim::lod` parks (stops posing) every rig
+///   outside the world camera's frustum after half a second, which a stage 3000 yd up always is.
+///   That left him frozen in his first-frame pose though the driver played Run.
 ///
 /// His parts are on layer 41 only, which the world camera does not draw.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
@@ -421,8 +553,18 @@ fn stage_prince(
     bare: Query<(), (With<Mesh3d>, Without<RenderLayers>)>,
     layered: Query<(), (With<Mesh3d>, With<RenderLayers>)>,
 ) {
-    if display.is_none() {
-        *display = world_prince.iter().find_map(|n| n.display_id);
+    // The corner gnome wears what the world Prince wears (D33): an outfit or a cousin chosen in the
+    // Catalogue changes the next run's Prince, so the portrait is rebuilt when the two disagree.
+    if let Some(now) = world_prince.iter().find_map(|n| n.display_id) {
+        if *display != Some(now) {
+            if let Ok(root) = stage.single() {
+                commands.entity(root).despawn();
+                bubble.prince_ready = false;
+                *display = Some(now);
+                return;
+            }
+            *display = Some(now);
+        }
     }
     let Ok(root) = stage.single() else {
         bubble.prince_ready = false;
@@ -445,6 +587,9 @@ fn stage_prince(
             .remove::<super::RunEntity>()
             .insert((
                 StagePrince,
+                // The world-view animation LOD parks any rig outside the world camera's
+                // frustum, and a stage 3000 yd up always is: this marker exempts him.
+                crate::portrait::StageRig,
                 crate::entities::Carried,
                 Visibility::Visible,
                 Transform::from_translation(PRINCE_STAGE)
@@ -544,48 +689,320 @@ fn prince_reactions(
     }
 }
 
-/// The corner Prince runs on the spot while the ball rolls (faster as it goes faster, a dash faster
-/// still) and stands when it stops. He only ever has his [`MovementState`] written: his transform is
-/// fixed, so he is in the same place in every frame.
+/// The corner Prince mirrors the world Prince's body, standing still: the world Prince's
+/// [`MovementState`] (his stride speed, forward flags, and with them the Run/Sprint pick, the dash
+/// scramble and the wind-up), his [`CastHold`] (ReadySpellDirected, full-body when he stands and a
+/// torso overlay while he moves) and the lean of his root about the feet are copied each frame onto
+/// the stage gnome. Only the lean touches the stage transform, which keeps its place and yaw: he runs
+/// on the spot. Both have the same model scale, so the same speed gives the same gait and cadence.
+///
+/// Before the world Prince exists (the menu, a restart) he stands.
+#[allow(clippy::type_complexity)]
 fn prince_motion(
-    time: Res<Time<Real>>,
-    ball: Res<BallState>,
-    mut bubble: ResMut<ItemBubble>,
-    mut stage: Query<&mut MovementState, With<StagePrince>>,
+    mut commands: Commands,
+    world: Query<
+        (&MovementState, &Transform, Option<&CastHold>),
+        (With<Prince>, Without<StagePrince>),
+    >,
+    mut stage: Query<
+        (Entity, &mut MovementState, &mut Transform, Has<CastHold>),
+        (With<StagePrince>, Without<Prince>),
+    >,
 ) {
-    let Ok(mut mv) = stage.single_mut() else {
+    let Ok((root, mut mv, mut tf, held)) = stage.single_mut() else {
         return;
     };
-    let rolling = Vec3::new(ball.vel.x, 0.0, ball.vel.z).length();
-    let wanted = if rolling > ROLLING {
-        let fraction = (rolling / top_speed(ball.radius).max(0.1)).clamp(0.0, 1.0);
-        let stride = STRIDE.0 + (STRIDE.1 - STRIDE.0) * fraction;
-        if ball.dash > 0.0 {
-            stride * STRIDE_DASH
-        } else {
-            stride
+    let (speed, flags, hold, lean) = match world.single() {
+        Ok((m, wtf, hold)) => {
+            // The world Prince's rotation is yaw × pitch(-lean): read the pitch back.
+            let (_, pitch, _) = wtf.rotation.to_euler(EulerRot::YXZ);
+            (m.speed, m.flags, hold.copied(), -pitch)
         }
-    } else {
-        0.0
-    };
-    let dt = time.delta_secs();
-    bubble.stride = if wanted == 0.0 {
-        0.0
-    } else if bubble.stride == 0.0 {
-        wanted
-    } else {
-        bubble.stride + (wanted - bubble.stride) * (1.0 - (-8.0 * dt).exp())
+        Err(_) => (0.0, 0, None, 0.0),
     };
     // Written only on a change, so the animation driver is not woken every frame.
-    let flags = if bubble.stride > 0.0 {
-        move_flags::FORWARD
-    } else {
-        0
-    };
-    if mv.speed != bubble.stride || mv.flags != flags {
-        mv.speed = bubble.stride;
+    if mv.speed != speed || mv.flags != flags {
+        mv.speed = speed;
         mv.flags = flags;
     }
+    match (hold, held) {
+        (Some(h), false) => {
+            commands.entity(root).insert(h);
+        }
+        (None, true) => {
+            commands.entity(root).remove::<CastHold>();
+        }
+        _ => {}
+    }
+    let want = Quat::from_rotation_y(PRINCE_YAW) * Quat::from_rotation_x(-lean * LEAN_SHOWN);
+    if tf.rotation.angle_between(want) > 1e-4 {
+        tf.rotation = want;
+    }
+}
+
+/// The commissioner's marker.
+#[derive(Component)]
+struct StageCommissioner;
+
+/// Put one inventor gnome on the commissioner stage the first time the hub or the results are up
+/// (and keep him: the corner Prince's rig is kept too), isolated exactly as the corner Prince
+/// is (see [`stage_prince`]), his parts on the commissioner layer alone.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn stage_commissioner(
+    mut commands: Commands,
+    phase: Res<State<Phase>>,
+    mut who: ResMut<Commissioner>,
+    mut run: ResMut<Run>,
+    assets: Option<Res<WorldAssets>>,
+    mut tried: Local<bool>,
+    stage: Query<Entity, With<StageCommissioner>>,
+    with_unit: Query<
+        (),
+        (
+            With<StageCommissioner>,
+            With<benilla_world::world_unit::WorldUnit>,
+        ),
+    >,
+    children: Query<&Children>,
+    bare: Query<(), (With<Mesh3d>, Without<RenderLayers>)>,
+    layered: Query<(), (With<Mesh3d>, With<RenderLayers>)>,
+) {
+    let wanted = matches!(
+        phase.get(),
+        Phase::Select | Phase::Results | Phase::Playing | Phase::Paused
+    );
+    // Read the catalog once, when the archives are open.
+    if who.display.is_none() && !*tried {
+        if let Some(assets) = &assets {
+            *tried = true;
+            let loaded = {
+                let mut chain = assets.chain.lock_recover();
+                load_creature_catalog(&mut chain)
+            };
+            match loaded {
+                Ok(catalog) => who.display = commissioner_display(&catalog),
+                Err(e) => warn!("azeroll commissioner: creature catalog unavailable: {e:#}"),
+            }
+            if let Some(d) = who.display {
+                info!("azeroll commissioner: display {d}");
+            }
+        }
+    }
+    let Ok(root) = stage.single() else {
+        who.ready = false;
+        if !wanted {
+            return;
+        }
+        let Some(display) = who.display else { return };
+        let entity = units::spawn_unit(
+            &mut commands,
+            &UnitSpec {
+                serial: run.guid(),
+                display,
+                scale: COMMISSIONER_SCALE,
+                level: 1,
+                faction: units::FACTION_FRIENDLY,
+                bytes0: 7 | (1 << 8),
+            },
+            COMMISSIONER_STAGE,
+            COMMISSIONER_YAW,
+        );
+        commands
+            .entity(entity)
+            .remove::<super::RunEntity>()
+            .insert((
+                StageCommissioner,
+                crate::portrait::StageRig,
+                crate::entities::Carried,
+                Visibility::Visible,
+                Transform::from_translation(COMMISSIONER_STAGE)
+                    .with_rotation(Quat::from_rotation_y(COMMISSIONER_YAW))
+                    .with_scale(Vec3::splat(COMMISSIONER_SCALE)),
+            ));
+        return;
+    };
+    // He stays once he is there (a respawn on the results screen would take longer than the
+    // verdict to load): only his camera sleeps outside the hub and the results.
+    if with_unit.contains(root) {
+        commands
+            .entity(root)
+            .remove::<benilla_world::world_unit::WorldUnit>();
+    }
+    let only = RenderLayers::layer(COMMISSIONER_LAYER);
+    let mut any = false;
+    for d in children.iter_descendants(root) {
+        if bare.contains(d) {
+            commands.entity(d).insert(only.clone());
+            any = true;
+        } else if layered.contains(d) {
+            any = true;
+        }
+    }
+    if who.ready != any {
+        who.ready = any;
+    }
+}
+
+/// A cousin in the Family Portrait (D33), standing behind Fizzwick on his stage once all three have
+/// been found: `slot` is where.
+#[derive(Component)]
+struct StageFamily {
+    slot: usize,
+}
+
+/// Where the portrait's cousins stand, relative to Fizzwick, in his scale-1 yards: either side of him
+/// and a step behind, small enough to peek over his shoulders.
+const FAMILY_SPOTS: [(f32, f32); 3] = [(-0.47, 0.35), (0.47, 0.35), (0.0, 0.75)];
+const FAMILY_SCALE: f32 = 0.72;
+
+/// The Family Portrait: when every cousin has been found, put them on the commissioner's stage behind
+/// him (his parts' layer rule is [`stage_commissioner`]'s). They cheer when he does. Built from
+/// `Progress` and `Campaign` alone; it is the hub's trinket for the whole family.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn stage_family(
+    mut commands: Commands,
+    phase: Res<State<Phase>>,
+    campaign: Res<super::campaign::Campaign>,
+    progress: Res<super::progress::Progress>,
+    who: Res<Commissioner>,
+    mut run: ResMut<Run>,
+    stage: Query<(Entity, &StageFamily)>,
+    children: Query<&Children>,
+    bare: Query<(), (With<Mesh3d>, Without<RenderLayers>)>,
+    with_unit: Query<
+        (),
+        (
+            With<StageFamily>,
+            With<benilla_world::world_unit::WorldUnit>,
+        ),
+    >,
+    mut anim: MessageWriter<EmoteAnim>,
+    mut seq: ResMut<PlaySeq>,
+    mut cheered: Local<u32>,
+) {
+    let cousins: Vec<u32> = campaign
+        .levels
+        .iter()
+        .filter_map(|l| l.cousin.as_ref().map(|c| (l, c)))
+        .filter(|(l, _)| progress.best(&l.meta.id).cousin)
+        .map(|(_, c)| c.display)
+        .collect();
+    let all = campaign.levels.iter().all(|l| l.cousin.is_some())
+        && cousins.len() == campaign.levels.len();
+    let all = all || crate::webenv::var("WOW_AZEROLL_FAMILY_PORTRAIT").is_some();
+    let cousins = if cousins.len() == campaign.levels.len() {
+        cousins
+    } else {
+        // The capture override: whoever the recipes hide, found or not.
+        campaign
+            .levels
+            .iter()
+            .filter_map(|l| l.cousin.as_ref().map(|c| c.display))
+            .collect()
+    };
+    if !all || *phase.get() != Phase::Select || !who.ready {
+        if !all {
+            for (e, _) in &stage {
+                commands.entity(e).despawn();
+            }
+        }
+        return;
+    }
+    if stage.iter().count() < cousins.len().min(FAMILY_SPOTS.len()) {
+        for (slot, &display) in cousins.iter().enumerate().take(FAMILY_SPOTS.len()) {
+            if stage.iter().any(|(_, f)| f.slot == slot) {
+                continue;
+            }
+            let (dx, dz) = FAMILY_SPOTS[slot];
+            let at = COMMISSIONER_STAGE + Vec3::new(dx, 0.0, dz) * COMMISSIONER_SCALE;
+            let entity = units::spawn_unit(
+                &mut commands,
+                &UnitSpec {
+                    serial: run.guid(),
+                    display,
+                    scale: FAMILY_SCALE,
+                    level: 1,
+                    faction: units::FACTION_FRIENDLY,
+                    bytes0: 7 | (1 << 8),
+                },
+                at,
+                COMMISSIONER_YAW - 0.15 * dx.signum(),
+            );
+            commands
+                .entity(entity)
+                .remove::<super::RunEntity>()
+                .insert((
+                    StageFamily { slot },
+                    crate::portrait::StageRig,
+                    crate::entities::Carried,
+                    Visibility::Visible,
+                    Transform::from_translation(at)
+                        .with_rotation(Quat::from_rotation_y(COMMISSIONER_YAW - 0.15 * dx.signum()))
+                        .with_scale(Vec3::splat(FAMILY_SCALE)),
+                ));
+            // Spawn one a frame; the layer pass below runs on the next.
+            return;
+        }
+    }
+    let only = RenderLayers::layer(COMMISSIONER_LAYER);
+    for (root, _) in &stage {
+        if with_unit.contains(root) {
+            commands
+                .entity(root)
+                .remove::<benilla_world::world_unit::WorldUnit>();
+        }
+        for d in children.iter_descendants(root) {
+            if bare.contains(d) {
+                commands.entity(d).insert(only.clone());
+            }
+        }
+        if who.cheer != *cheered {
+            anim.write(EmoteAnim {
+                entity: root,
+                anim_id: ANIM_CHEER,
+                seq: seq.next(),
+                via_player: false,
+            });
+        }
+    }
+    *cheered = who.cheer;
+}
+
+/// His gestures: a flourish on arrival and on a cheer, and a talking gesture every so often while
+/// a line types out.
+fn commissioner_acts(
+    time: Res<Time<Real>>,
+    mut who: ResMut<Commissioner>,
+    stage: Query<Entity, With<StageCommissioner>>,
+    mut anim: MessageWriter<EmoteAnim>,
+    mut seq: ResMut<PlaySeq>,
+) {
+    let dt = time.delta_secs();
+    who.since_gesture += dt;
+    let Ok(entity) = stage.single() else { return };
+    let mut play = |anim_id: u16, who: &mut Commissioner| {
+        who.since_gesture = 0.0;
+        anim.write(EmoteAnim {
+            entity,
+            anim_id,
+            seq: seq.next(),
+            via_player: false,
+        });
+    };
+    if let Some(id) = who.gesture.take() {
+        play(id, &mut who);
+    } else if who.cheer != who.cheered {
+        who.cheered = who.cheer;
+        play(ANIM_CHEER, &mut who);
+    } else if who.talking && (!who.was_talking || who.since_gesture >= TALK_EVERY) && who.ready {
+        let id = if who.was_talking {
+            ANIM_TALK
+        } else {
+            ANIM_EXCLAIM
+        };
+        play(id, &mut who);
+    }
+    who.was_talking = who.talking;
 }
 
 /// Spin the item, fade it when idle, fade the Prince in and put each camera to sleep when its widget
@@ -597,6 +1014,7 @@ fn animate(
     loading: Res<LoadingScreen>,
     models: Option<Res<HudModels>>,
     mut bubble: ResMut<ItemBubble>,
+    mut who: ResMut<Commissioner>,
     mut transforms: Query<&mut Transform>,
     mut cameras: Query<&mut Camera, With<HudCam>>,
 ) {
@@ -650,13 +1068,31 @@ fn animate(
 
     // His camera is fixed; it only sleeps with the HUD, or until his parts exist.
     let prince_on = hud_on && bubble.prince_ready;
-    let want = if prince_on { 1.0 } else { 0.0 };
-    bubble.prince_alpha = if prince_on {
-        (bubble.prince_alpha + dt * 3.0).min(want)
+    bubble.prince_for = if prince_on {
+        bubble.prince_for + dt
     } else {
         0.0
     };
-    for (cam, on) in [(models.item_cam, item_on), (models.prince_cam, prince_on)] {
+    bubble.prince_alpha = if prince_on && bubble.prince_for > PRINCE_SETTLE {
+        (bubble.prince_alpha + dt * 3.0).min(1.0)
+    } else {
+        0.0
+    };
+    let hub_on = matches!(phase.get(), Phase::Select | Phase::Results) && !loading.covering();
+    // Fizzwick's stage stays awake through play, too, so his porthole (and the results panel's
+    // window) never shows the empty frames of a camera that has only just been woken.
+    let who_on = (hub_on || hud_on) && who.ready;
+    who.awake_for = if who_on { who.awake_for + dt } else { 0.0 };
+    who.alpha = if who_on && who.awake_for > WHO_SETTLE {
+        (who.alpha + dt * 3.0).min(1.0)
+    } else {
+        0.0
+    };
+    for (cam, on) in [
+        (models.item_cam, item_on),
+        (models.prince_cam, prince_on),
+        (models.commissioner_cam, who_on),
+    ] {
         if let Ok(mut camera) = cameras.get_mut(cam) {
             if camera.is_active != on {
                 camera.is_active = on;

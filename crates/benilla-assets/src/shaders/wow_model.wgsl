@@ -419,20 +419,32 @@ fn vertex(vertex: WowVertex) -> WowVsOut {
 }
 
 
-// Fork carry: stable screen-door edge, depth and contact-height protected; disabled by default.
+// Fork carry (Azeroll): a stable screen-door window that sees through every world fragment nearer
+// the eye than `cutout_limits.x` above the contact band, or nearer than the stricter
+// `cutout_limits.w` plane at any height. Off unless `cutout_limits.z` is set (Azeroll only).
 fn foliage_window(pixel: vec2<f32>, world: vec3<f32>) -> bool {
-    let c = wow_light.cutout_screen;
     let gate = wow_light.cutout_limits;
+    // Uniform early-out: with the window off (every mode but Azeroll) no fragment does its math.
+    if (gate.z <= 0.5) {
+        return false;
+    }
+    let c = wow_light.cutout_screen;
     let depth = -(view.view_from_world * vec4<f32>(world, 1.0)).z;
     let distance = length(pixel - c.xy) / max(c.z, 1.0);
     let coverage = 1.0 - smoothstep(0.72, 1.0, distance);
     let noise = fract(52.9829189 * fract(dot(floor(pixel), vec2<f32>(0.06711056, 0.00583715))));
-    return gate.z > 0.5 && depth < gate.x && world.y > gate.y && coverage > noise;
+    // Preserve the actual support floor, but clear the rest of the old contact band.
+    let foreground = gate.w > 0.0 && depth < gate.w && world.y > c.w;
+    // Azeroll's HUD stages (the item bubble, the Prince and Fizzwick) stand 3000 yd up, drawn by
+    // their own cameras into small targets whose pixels would otherwise fall inside the window:
+    // nothing that high is ever part of the world, so it is never cut.
+    let staged = world.y > 2000.0;
+    return !staged && (foreground || (depth < gate.x && world.y > gate.y)) && coverage > noise;
 }
 
 @fragment
 fn fragment(in: WowVsOut, @builtin(front_facing) is_front: bool) -> WowFragOut {
-    if ((u32(m.clutter_fade.z) & 16384u) != 0u && m.anim_slots.w < 0.5) {
+    if (m.anim_slots.w < 0.5) {
         if (foliage_window(in.position.xy, in.world_position.xyz)) { discard; }
     }
     // The UI model tile's cell clip: the reference gives each `<Model>` pane its widget rect as the

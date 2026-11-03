@@ -4,27 +4,27 @@ mod assemble;
 mod fx;
 pub(crate) mod prop_light;
 
-pub use assemble::{spawn_model_entities, SpawnedModel};
+pub use assemble::{SpawnedModel, frozen_interior_materials, spawn_model_entities};
 pub use fx::point_light;
 use fx::{
     emitter_fade, spawn_emitters_for, spawn_lights_for, spawn_ribbons_for, spawn_wmo_lights_for,
 };
 
-use std::sync::Arc;
 use bevy::platform::time::Instant;
+use std::sync::Arc;
 
 use benilla_assets::coords::{wmo_doodad_local, wow_to_bevy};
 use benilla_assets::{AdtTile, DoodadBase, M2Model, WmoModel};
-use benilla_formats::{world_to_tile, M2Bounds};
+use benilla_formats::{M2Bounds, world_to_tile};
 use bevy::camera::primitives::Aabb;
 use bevy::prelude::*;
 
-use crate::collision::{camera_layers, walk_layers, GroundDecalSurface, PickOccluder};
+use crate::collision::{GroundDecalSurface, PickOccluder, camera_layers, walk_layers};
 use crate::doodad_anim::wants_rig;
 use crate::interact::WorldObject;
 use crate::lighting::SharedLightBuffer;
 use crate::lighting::{PropProbeSlot, PropProbes};
-use crate::liquid::{spawn_wmo_liquids, LiquidAssets};
+use crate::liquid::{LiquidAssets, spawn_wmo_liquids};
 use crate::model_forms::{FormSlices, ModelForms, ModelKey, WANT_SKINNED, WANT_STATIC};
 use crate::model_render::ModelKind;
 use crate::model_render::ShadeSel;
@@ -33,15 +33,15 @@ use benilla_assets::m2_url;
 use benilla_assets::materials::WowModelMaterial;
 
 use super::collider::{
-    build_collider_task, doodad_bodies_disabled, doodad_hulls_bare, placement_collider_data,
-    PendingCollider,
+    PendingCollider, build_collider_task, doodad_bodies_disabled, doodad_hulls_bare,
+    placement_collider_data,
 };
 use super::merge::{MergeSite, StaticMerge};
-use super::weld::{hull_weld_disabled, HullWelds};
+use super::weld::{HullWelds, hull_weld_disabled};
 use super::{
-    doodad_ground_shade, ModelHandle, Placements, ShadeResolve, TerrainStreamer, SPAWN_BUDGET,
+    ModelHandle, Placements, SPAWN_BUDGET, ShadeResolve, TerrainStreamer, doodad_ground_shade,
 };
-use prop_light::{fold_interior_probe, PropLight, PropLobeLight, WmoDoodadInst};
+use prop_light::{PropLight, PropLobeLight, WmoDoodadInst, fold_interior_probe};
 
 /// Placements (models or WMO props) spawned per frame once paced: ~150 × ~50 µs of downstream
 /// cost each is about half a 60 Hz frame of render work.
@@ -55,6 +55,7 @@ type SpawnTables<'w> = (
     ResMut<'w, ModelForms>,
     ResMut<'w, HullWelds>,
     ResMut<'w, StaticMerge>,
+    Res<'w, super::partitions::WmoPartitions>,
     // `None` only under `WOW_STATIC_GX=0`, when the retained pass is not armed.
     Option<ResMut<'w, crate::static_gx::StaticGx>>,
 );
@@ -116,7 +117,16 @@ pub(super) fn spawn_loaded_placements(
     mut anim_table: ResMut<crate::mat_anim_table::MatAnimTable>,
     tables: SpawnTables,
 ) {
-    let (mut probes, mut activity, focus, mut forms, mut welds, mut merge, mut staticgx) = tables;
+    let (
+        mut probes,
+        mut activity,
+        focus,
+        mut forms,
+        mut welds,
+        mut merge,
+        partitions,
+        mut staticgx,
+    ) = tables;
     let Some(shared_light) = shared_light else {
         return;
     };
@@ -143,6 +153,7 @@ pub(super) fn spawn_loaded_placements(
         by_id,
         materials: mat_cache,
         pending_spawns,
+        ..
     } = placements;
 
     // At most `SPAWN_BUDGET` per frame, resumed next frame through the `spawned` flags; the check
@@ -295,6 +306,11 @@ pub(super) fn spawn_loaded_placements(
                     ents
                 }
                 ModelHandle::Wmo(h) => {
+                    let Some(effective) = partitions.effective(p.map, unique_id, h) else {
+                        continue;
+                    };
+                    let partitioned = effective.id() != h.id();
+                    let h = effective;
                     let Some(m) = wmos.get(h) else {
                         continue;
                     };
@@ -370,7 +386,7 @@ pub(super) fn spawn_loaded_placements(
                         &mut anim_table,
                         false, // world-static: not the entity-hosted lane
                         None,  // world-static placement: cards bake their world pivot
-                        Some((
+                        (!partitioned).then_some((
                             &mut *merge,
                             MergeSite::Wmo {
                                 uid: unique_id,
@@ -419,7 +435,7 @@ pub(super) fn spawn_loaded_placements(
                     // instance. A portal-less building keeps every group visible but still gets an
                     // instance when it has a WMOAreaTable identity, for the interior down-ray.
                     if let Some(instance) = instance {
-                        if has_portals {
+                        if has_portals || partitioned {
                             // One shared key per group, not per submesh (a city has ~100k).
                             let group_key: Vec<Arc<[u16]>> = (0..m.group_nav.len() as u16)
                                 .map(|g| Arc::from([g].as_slice()))
@@ -432,6 +448,15 @@ pub(super) fn spawn_loaded_placements(
                                 commands
                                     .entity(entity)
                                     .insert(WmoGroupVis { instance, groups });
+                                if partitioned {
+                                    commands.entity(entity).insert(
+                                        super::partitions::PieceProduct {
+                                            map: p.map,
+                                            uid: unique_id,
+                                            group,
+                                        },
+                                    );
+                                }
                             }
                         }
                         // Held for the props, which spawn later, and for any instance: it also
@@ -484,40 +509,78 @@ pub(super) fn spawn_loaded_placements(
                             }
                         }
                     }
-                    // Two colliders, each on its layer: the reference gathers different faces for
-                    // the body (drops DETAIL) and the camera (drops NOCAMCOLLIDE, keeps DETAIL).
-                    if let Some((verts, tris)) =
-                        placement_collider_data(m.collision.as_ref(), &p.transform)
-                    {
-                        ents.push(
-                            commands
-                                .spawn((
-                                    PendingCollider::new(
+                    if partitioned {
+                        // Permanent faces share two colliders; each structural piece owns its pair.
+                        let base = partitions.plans[&(p.map, unique_id)].expected_groups;
+                        let permanent = super::partitions::collider_groups(m, 0..base);
+                        let pieces = (base..m.group_nav.len())
+                            .map(|g| (g, super::partitions::collider_groups(m, g..g + 1)));
+                        for (g, (walk, camera)) in std::iter::once((0, permanent)).chain(pieces) {
+                            if partitions.removed_group(p.map, unique_id, g as u16) {
+                                continue;
+                            }
+                            for (hull, layers, is_walk) in [
+                                (walk, walk_layers(), true),
+                                (camera, camera_layers(), false),
+                            ] {
+                                if let Some((verts, tris)) =
+                                    placement_collider_data(hull.as_ref(), &p.transform)
+                                {
+                                    let mut e = commands.spawn(PendingCollider::new(
                                         build_collider_task(verts, tris),
-                                        Some(walk_layers()),
+                                        Some(layers),
                                         true,
-                                    ),
-                                    // The walk faces take the selection ring (floors, steps).
-                                    GroundDecalSurface,
-                                    // Clamps the mouse pick. The reference's occluder faces are
-                                    // MOPY reject-mask 0x84; the walk bake (0x04) is the nearest.
-                                    PickOccluder,
-                                ))
-                                .id(),
-                        );
-                    }
-                    if let Some((verts, tris)) =
-                        placement_collider_data(m.collision_camera.as_ref(), &p.transform)
-                    {
-                        ents.push(
-                            commands
-                                .spawn(PendingCollider::new(
-                                    build_collider_task(verts, tris),
-                                    Some(camera_layers()),
-                                    true,
-                                ))
-                                .id(),
-                        );
+                                    ));
+                                    if is_walk {
+                                        e.insert((GroundDecalSurface, PickOccluder));
+                                    }
+                                    {
+                                        e.insert(super::partitions::PieceProduct {
+                                            map: p.map,
+                                            uid: unique_id,
+                                            group: g as u16,
+                                        });
+                                    }
+                                    ents.push(e.id());
+                                }
+                            }
+                        }
+                    } else {
+                        // Two colliders, each on its layer: the reference gathers different faces for
+                        // the body (drops DETAIL) and the camera (drops NOCAMCOLLIDE, keeps DETAIL).
+                        if let Some((verts, tris)) =
+                            placement_collider_data(m.collision.as_ref(), &p.transform)
+                        {
+                            ents.push(
+                                commands
+                                    .spawn((
+                                        PendingCollider::new(
+                                            build_collider_task(verts, tris),
+                                            Some(walk_layers()),
+                                            true,
+                                        ),
+                                        // The walk faces take the selection ring (floors, steps).
+                                        GroundDecalSurface,
+                                        // Clamps the mouse pick. The reference's occluder faces are
+                                        // MOPY reject-mask 0x84; the walk bake (0x04) is the nearest.
+                                        PickOccluder,
+                                    ))
+                                    .id(),
+                            );
+                        }
+                        if let Some((verts, tris)) =
+                            placement_collider_data(m.collision_camera.as_ref(), &p.transform)
+                        {
+                            ents.push(
+                                commands
+                                    .spawn(PendingCollider::new(
+                                        build_collider_task(verts, tris),
+                                        Some(camera_layers()),
+                                        true,
+                                    ))
+                                    .id(),
+                            );
+                        }
                     }
                     // MOLT lights: they light nearby models and the walls over their baked MOCV.
                     spawn_wmo_lights_for(
@@ -529,7 +592,29 @@ pub(super) fn spawn_loaded_placements(
                         &mut ents,
                     );
                     tag_world_object(&mut commands, &ents, &object);
-                    p.doodads = resolve_wmo_doodads(m, p.doodad_set, p.transform, &asset_server);
+                    p.doodads = resolve_wmo_doodads(
+                        m,
+                        p.doodad_set,
+                        p.transform,
+                        &asset_server,
+                        &p.prop_claims,
+                        p.map,
+                        unique_id,
+                        &mut p.claimed_props,
+                        &mut commands,
+                        partitioned && partitions.plans[&(p.map, unique_id)].exterior_only,
+                        &partitions
+                            .ready
+                            .get(&(p.map, unique_id))
+                            .map(|r| {
+                                r.groups
+                                    .values()
+                                    .copied()
+                                    .filter(|g| partitions.removed_group(p.map, unique_id, *g))
+                                    .collect::<Vec<_>>()
+                            })
+                            .unwrap_or_default(),
+                    );
                     ents
                 }
             };
@@ -550,6 +635,14 @@ pub(super) fn spawn_loaded_placements(
         let portal_instance = p.portal_instance;
         for d in &mut p.doodads {
             if d.spawned {
+                continue;
+            }
+            if d.groups
+                .iter()
+                .any(|g| partitions.removed_group(p.map, unique_id, *g))
+            {
+                d.spawned = true;
+                *pending_spawns -= 1;
                 continue;
             }
             let Some(m) = m2s.get(&d.handle) else {
@@ -649,7 +742,7 @@ pub(super) fn spawn_loaded_placements(
                 &mut anim_table,
                 false, // world-static: not the entity-hosted lane
                 None,  // world-static placement: cards bake their world pivot
-                Some((
+                (!partitions.removable(p.map, unique_id, &d.groups)).then_some((
                     &mut *merge,
                     MergeSite::Prop {
                         uid: unique_id,
@@ -712,7 +805,7 @@ pub(super) fn spawn_loaded_placements(
                 .then(|| placement_collider_data(m.collision.as_ref(), &d.transform))
                 .flatten()
             {
-                if hull_weld_disabled() {
+                if hull_weld_disabled() || partitions.removable(p.map, unique_id, &d.groups) {
                     ents.push(
                         commands
                             .spawn((
@@ -753,6 +846,15 @@ pub(super) fn spawn_loaded_placements(
                 &mut ents,
             );
             tag_world_object(&mut commands, &ents, &object);
+            if partitions.plans.contains_key(&(p.map, unique_id)) {
+                for &e in &ents {
+                    commands.entity(e).insert(super::partitions::PieceProduct {
+                        map: p.map,
+                        uid: unique_id,
+                        group: d.groups.first().copied().unwrap_or(0),
+                    });
+                }
+            }
             p.entities.extend(ents);
             d.spawned = true;
             *pending_spawns -= 1;
@@ -772,6 +874,13 @@ fn resolve_wmo_doodads(
     doodad_set: u16,
     wmo_world: Transform,
     asset_server: &AssetServer,
+    claims: &super::WmoPropClaims,
+    map: u32,
+    placement: u32,
+    claimed: &mut Vec<super::WmoPropKey>,
+    commands: &mut Commands,
+    exterior_only: bool,
+    removed: &[u16],
 ) -> Vec<WmoDoodadInst> {
     let mut ranges: Vec<(u32, u32)> = wmo
         .doodad_sets
@@ -785,6 +894,7 @@ fn resolve_wmo_doodads(
         }
     }
     let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
     for (start, count) in ranges {
         for (di, d) in wmo
             .doodads
@@ -793,10 +903,22 @@ fn resolve_wmo_doodads(
             .skip(start as usize)
             .take(count as usize)
         {
-            if d.model.is_empty() {
+            if d.model.is_empty() || (claims.predicate.is_some() && !seen.insert(di)) {
                 continue; // MODN name offset didn't resolve
             }
+            if wmo
+                .doodad_groups
+                .get(di)
+                .is_some_and(|gs| gs.iter().any(|g| removed.contains(g)))
+            {
+                continue;
+            }
             let local = wmo_doodad_local(d.position, d.orientation, d.scale);
+            let key = super::WmoPropKey {
+                map,
+                placement,
+                modd: di as u32,
+            };
             // The asset-level base, with its MOLR lights moved into world space for the fold.
             let light = match wmo.doodad_base.get(di) {
                 Some(DoodadBase::Interior(b)) => PropLight::Interior {
@@ -817,7 +939,28 @@ fn resolve_wmo_doodads(
                 },
                 _ => PropLight::Exterior,
             };
+            if let Some(predicate) = &claims.predicate {
+                let query = super::WmoPropQuery {
+                    light: light.clone(),
+                    key,
+                    model: d.model.clone(),
+                    transform: wmo_world.mul_transform(local),
+                };
+                if predicate(&query) {
+                    claimed.push(key);
+                    commands.queue(move |world: &mut World| {
+                        world.write_message(super::WmoPropClaimed(query));
+                    });
+                    continue; // No M2 request, probe, effects, hull weld or render/merge admission.
+                }
+            }
+            // Outdoor mode partitions retain reachable mode claims above, while omitting the
+            // closed rooms' unclaimed interior furniture and its animation/light cost.
+            if exterior_only && matches!(wmo.doodad_base.get(di), Some(DoodadBase::Interior(_))) {
+                continue;
+            }
             out.push(WmoDoodadInst {
+                key,
                 handle: asset_server.load(m2_url(&d.model)),
                 transform: wmo_world.mul_transform(local),
                 // Every group whose MODR names the prop, inverted at asset load.
@@ -942,8 +1085,12 @@ mod retire_tests {
 
     fn placement(model: ModelHandle, doodads: Vec<WmoDoodadInst>) -> Placement {
         Placement {
+            map: 0,
+            claimed_props: Vec::new(),
+            prop_claims: crate::terrain_stream::WmoPropClaims::default(),
             model,
             claimed: false,
+            suppressed: false,
             transform: Transform::IDENTITY,
             entities: Vec::new(),
             spawned: false,
@@ -958,6 +1105,11 @@ mod retire_tests {
 
     fn prop(handle: Handle<M2Model>) -> WmoDoodadInst {
         WmoDoodadInst {
+            key: super::super::WmoPropKey {
+                map: 0,
+                placement: 0,
+                modd: 0,
+            },
             handle,
             transform: Transform::IDENTITY,
             groups: Arc::from([]),
@@ -1021,5 +1173,89 @@ mod retire_tests {
         let pl = app.world().resource::<Placements>();
         assert!(pl.by_id[&1].doodads[0].spawned);
         assert_eq!(pl.pending_spawns, 0);
+    }
+}
+
+#[cfg(test)]
+mod claim_tests {
+    use super::*;
+    use bevy::ecs::system::RunSystemOnce;
+    fn fixture() -> WmoModel {
+        WmoModel {
+            doodads: (0..5)
+                .map(|i| benilla_formats::WmoDoodad {
+                    model: format!("chair{i}.m2"),
+                    position: [i as f32, 0.0, 0.0],
+                    orientation: [0.0, 0.0, 0.0, 1.0],
+                    scale: 1.0,
+                    color: [255; 4],
+                })
+                .collect(),
+            doodad_sets: vec![
+                benilla_formats::WmoDoodadSet { start: 0, count: 1 },
+                benilla_formats::WmoDoodadSet { start: 3, count: 2 },
+            ],
+            ..default()
+        }
+    }
+    fn resolve(claim: bool) -> (Vec<WmoDoodadInst>, Vec<super::super::WmoPropKey>, World) {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()))
+            .init_asset::<M2Model>()
+            .add_message::<super::super::WmoPropClaimed>();
+        let result = app
+            .world_mut()
+            .run_system_once(move |mut commands: Commands, assets: Res<AssetServer>| {
+                let claims = super::super::WmoPropClaims {
+                    predicate: claim.then(|| Arc::new(|_: &super::super::WmoPropQuery| true) as _),
+                };
+                let mut keys = Vec::new();
+                let out = resolve_wmo_doodads(
+                    &fixture(),
+                    1,
+                    Transform::IDENTITY,
+                    &assets,
+                    &claims,
+                    7,
+                    42,
+                    &mut keys,
+                    &mut commands,
+                    false,
+                    &[],
+                );
+                (out, keys)
+            })
+            .unwrap();
+        (result.0, result.1, std::mem::take(app.world_mut()))
+    }
+    #[test]
+    fn default_off_preserves_selected_props_and_transforms() {
+        let (out, keys, _) = resolve(false);
+        assert!(keys.is_empty());
+        assert_eq!(out.len(), 3);
+        for (prop, i) in out.iter().zip([0, 3, 4]) {
+            assert_eq!(
+                prop.transform,
+                benilla_assets::coords::wmo_doodad_local(
+                    [i as f32, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 1.0],
+                    1.0
+                )
+            );
+            assert!(!prop.spawned);
+        }
+    }
+    #[test]
+    fn claims_are_settled_and_keep_absolute_identity() {
+        let (out, keys, world) = resolve(true);
+        assert!(out.is_empty());
+        assert_eq!(keys.iter().map(|k| k.modd).collect::<Vec<_>>(), [0, 3, 4]);
+        assert!(keys.iter().all(|k| k.map == 7 && k.placement == 42));
+        assert_eq!(
+            world
+                .resource::<Messages<super::super::WmoPropClaimed>>()
+                .len(),
+            3
+        );
     }
 }

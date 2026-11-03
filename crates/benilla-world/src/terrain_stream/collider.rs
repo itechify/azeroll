@@ -2,8 +2,8 @@
 //! ([`build_collider_task`]) and [`finish_colliders`] attaches the results under a per-frame
 //! budget, since a streamed burst finishes together and each attach is main-thread work.
 
-use std::time::Duration;
 use bevy::platform::time::Instant;
+use std::time::Duration;
 
 use avian3d::prelude::{Collider, CollisionLayers, RigidBody};
 use benilla_assets::coords::wow_to_bevy;
@@ -11,7 +11,7 @@ use benilla_formats::CollisionMesh;
 use bevy::ecs::system::SystemState;
 use bevy::prelude::*;
 use bevy::tasks::futures_lite::future;
-use bevy::tasks::{block_on, AsyncComputeTaskPool, Task};
+use bevy::tasks::{AsyncComputeTaskPool, Task, block_on};
 
 #[cfg(any(target_arch = "wasm32", test))]
 mod web_budget;
@@ -283,7 +283,7 @@ mod tests {
     use bevy::app::TaskPoolPlugin;
     use bevy::ecs::system::RunSystemOnce;
 
-    use benilla_formats::{ChunkMesh, CHUNK_SIZE};
+    use benilla_formats::{CHUNK_SIZE, ChunkMesh};
 
     /// One flat MCNK at `(ix, iy)` with only what the wall builder reads. The tile's NW corner is
     /// the WoW origin: rows step −x and columns −y, as `adt_to_tile_mesh` lays them out.

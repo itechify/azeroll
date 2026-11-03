@@ -9,7 +9,7 @@
 
 use std::collections::HashSet;
 
-use benilla_assets::{cap96, floor168, AdtTile, WmoModel};
+use benilla_assets::{AdtTile, WmoModel, cap96, floor168};
 use bevy::asset::AssetId;
 use bevy::ecs::lifecycle::HookContext;
 use bevy::ecs::relationship::RelationshipTarget as _;
@@ -20,9 +20,9 @@ use bevy::prelude::*;
 use crate::lighting::{PropProbeSlot, PropProbes};
 use crate::model_fade::{PendingAppearFade, RenderFade};
 use crate::terrain_stream::{
-    fold_interior_probe, interior_light_up, PropLobeLight, TerrainStreamer,
+    PropLobeLight, TerrainStreamer, fold_interior_probe, interior_light_up,
 };
-use crate::wmo_portal::{indoor_verdict_at, IndoorVerdict, WmoPortalInstance};
+use crate::wmo_portal::{IndoorVerdict, WmoPortalInstance, indoor_verdict_at};
 use benilla_assets::materials::WowModelMaterial;
 
 /// Squared distance (yd²) before a re-test: an epsilon, since the reference re-runs a unit's
@@ -38,6 +38,11 @@ pub struct WmoResidency {
 }
 
 impl WmoResidency {
+    /// Explicit placement lifecycle invalidation (two instances can share an asset).
+    pub(crate) fn invalidate_placements(&mut self) {
+        self.generation = self.generation.wrapping_add(1);
+    }
+
     /// Bumped whenever the resident set changes.
     pub(crate) fn generation(&self) -> u32 {
         self.generation
@@ -203,13 +208,18 @@ pub struct InteriorLit {
 impl InteriorLit {
     /// On the Bake law: the tag carries the probe slot, so [`crate::entity_shade`] must not write
     /// the shade byte over it.
-    pub(crate) fn is_bake(&self) -> bool {
+    pub fn is_bake(&self) -> bool {
         matches!(self.applied, Some(AppliedLaw::Bake(_)))
+    }
+
+    /// The exterior-law material, independent of the current law: for copies drawn off-world.
+    pub fn exterior_material(&self) -> &Handle<WowModelMaterial> {
+        &self.exterior
     }
 
     /// The steady material for the current law, which the fade writers settle onto: the bake
     /// variant on the Bake law, else the exterior one (a matte-kind part has no bake variant).
-    pub(crate) fn steady_material(&self) -> &Handle<WowModelMaterial> {
+    pub fn steady_material(&self) -> &Handle<WowModelMaterial> {
         match (self.applied, &self.kind) {
             (Some(AppliedLaw::Bake(_)), InteriorKind::Bake { material, .. }) => material,
             _ => &self.exterior,
@@ -337,7 +347,7 @@ pub fn classify_entity_interior(
         Or<(With<LitParts>, With<LitEmitters>)>,
     >,
     mut nodes: Query<&mut crate::entity_shade::GroundShade>,
-    bake_states: Query<&BakeState>,
+    bake_inputs: (Query<&BakeState>, Query<&crate::terrain_stream::PropLight>),
     seats: Query<&PropProbeSlot>,
     mut queue: ResMut<InteriorReauthor>,
     part_anchors: Query<&ClassifiedBy>,
@@ -346,6 +356,7 @@ pub fn classify_entity_interior(
     // (`FadeMaterials::material_for`), so the two writers never fight.
     mut parts: PartWrite,
 ) {
+    let (bake_states, fixed_lights) = bake_inputs;
     let _t0 = bevy::platform::time::Instant::now();
     let (mut n_anchors, mut n_resolved, mut n_written) = (0usize, 0usize, 0usize);
     // Anchors with no part to ask, the tripwire for a fade lockout creeping back.
@@ -421,7 +432,7 @@ pub fn classify_entity_interior(
                 })
             });
         let bake = match part_bake {
-            Some(center) => center,
+            Some(center) => center.map(|c| bake_center.map_or(c, |b| b.0)),
             None if lit_emitters.is_some() => Some(bake_center.map_or(Vec3::ZERO, |c| c.0)),
             None => {
                 n_fade_blocked += 1;
@@ -447,6 +458,7 @@ pub fn classify_entity_interior(
             attach_at,
             bake,
             seated,
+            fixed_lights.get(anchor).ok(),
         );
         resolve_us += _r.elapsed().as_secs_f32() * 1e6;
         let fog = anchor_room_fogged(room, &instances);
@@ -709,6 +721,7 @@ fn resolve_anchor_law(
     attach_at: Vec3,
     bake_center: Option<Vec3>,
     seated: Option<u16>,
+    fixed_light: Option<&crate::terrain_stream::PropLight>,
 ) -> (AppliedLaw, Option<crate::wmo_portal::WmoRoom>) {
     let (verdict, claimed) = indoor_verdict_at(
         wmos,
@@ -726,6 +739,15 @@ fn resolve_anchor_law(
             node.on_wmo = on_wmo;
         }
     }
+    // A stationary MODD's provider already classified its owning group. Containment can
+    // miss for furniture whose origin/centre sits in a wall; do not lose its baked light.
+    let verdict = match fixed_light {
+        Some(crate::terrain_stream::PropLight::Interior { lights, .. }) => IndoorVerdict::Baked {
+            mocv: [0; 3],
+            lobes: lights.clone(),
+        },
+        _ => verdict,
+    };
     let law = match bake_center {
         None => match verdict {
             IndoorVerdict::DayNight | IndoorVerdict::Baked { .. } => AppliedLaw::Matte,
@@ -735,7 +757,7 @@ fn resolve_anchor_law(
             match verdict {
                 IndoorVerdict::Outdoors | IndoorVerdict::OutdoorsOnWmo => AppliedLaw::Exterior,
                 IndoorVerdict::DayNight => AppliedLaw::Matte,
-                IndoorVerdict::Baked { mocv, lobes } => {
+                IndoorVerdict::Baked { mocv, mut lobes } => {
                     // The ambient chases cap96(MOCV) at the node's 2.0/s ramp, seeded from the
                     // scene ambient on entry (the reference's `[+0x9c]` carries across the leg
                     // flip); the diffuse is floor-168(MOCV) × the ramped intensity, plus MOLR.
@@ -756,7 +778,19 @@ fn resolve_anchor_law(
                         // No `GroundShade` yet: the settled words.
                         Err(_) => (Vec3::from_array(cap96(mocv)), 1.0),
                     };
-                    let words = (ambient.to_array(), (word * intensity).to_array());
+                    // A transferred MODD retains its own baked words until its owner releases
+                    // the provider (e.g. on pickup); movable models then use the footprint law.
+                    let words = match fixed_light {
+                        Some(crate::terrain_stream::PropLight::Interior {
+                            ambient,
+                            diffuse,
+                            lights,
+                        }) => {
+                            lobes = lights.clone();
+                            (*ambient, *diffuse)
+                        }
+                        _ => (ambient.to_array(), (word * intensity).to_array()),
+                    };
                     let coeffs = fold_interior_probe(words.0, words.1, ref_point, &lobes);
                     let emitter_light = interior_light_up(words.0, words.1, ref_point, &lobes);
                     let slot = match seated {
@@ -1416,5 +1450,49 @@ mod tests {
             live_before - 1,
             "the orphan slot is released, not leaked"
         );
+    }
+    #[test]
+    fn transferred_modd_uses_exact_provider_then_reclaims_exterior() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = classifier_world();
+        let ambient = [0.1, 0.2, 0.3];
+        let diffuse = [0.4, 0.5, 0.6];
+        let root = world
+            .spawn((
+                GlobalTransform::default(),
+                crate::terrain_stream::PropLight::Interior {
+                    ambient,
+                    diffuse,
+                    lights: vec![],
+                },
+            ))
+            .id();
+        let exterior = Handle::default();
+        let bake = Handle::default();
+        let part = world
+            .spawn((
+                part_interior_lit(&exterior, Some(&exterior), Some(&bake), Vec3::ZERO, root)
+                    .unwrap(),
+                MeshMaterial3d::<WowModelMaterial>(exterior),
+                MeshTag(0),
+            ))
+            .id();
+        world.run_system_once(classify_entity_interior).unwrap();
+        assert!(world.get::<InteriorLit>(part).unwrap().is_bake());
+        assert_eq!(
+            world.get::<ParticleLight>(root).unwrap().0,
+            interior_light_up(ambient, diffuse, Vec3::ZERO, &[])
+        );
+        assert_eq!(world.resource::<PropProbes>().occupancy().0, 1);
+        // Releasing the fixed provider and moving outdoors reclaims the payload and slot.
+        world
+            .entity_mut(root)
+            .remove::<crate::terrain_stream::PropLight>();
+        world
+            .entity_mut(root)
+            .insert(GlobalTransform::from_translation(Vec3::X));
+        world.run_system_once(classify_entity_interior).unwrap();
+        assert!(!world.get::<InteriorLit>(part).unwrap().is_bake());
+        assert_eq!(world.resource::<PropProbes>().occupancy().0, 0);
     }
 }

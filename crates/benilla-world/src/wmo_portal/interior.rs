@@ -618,9 +618,19 @@ fn footprint_scan(
     })
 }
 
+/// Full model-local containment for an explicit reveal point, independent of ray direction.
+pub(super) fn contains_collision_bounds(
+    bounds: Option<([f32; 3], [f32; 3])>,
+    point: [f32; 3],
+) -> bool {
+    bounds.is_some_and(|(min, max)| {
+        (0..3).all(|a| point[a] >= min[a] - 0.05 && point[a] <= max[a] + 0.05)
+    })
+}
+
 /// Whether a probe column (model-local) can hit any of a building's collision faces: inside the
 /// face AABB in XY with faces on the cast's side. Exact, and one test per building in open country.
-fn column_in_collision_bounds(
+pub(super) fn column_in_collision_bounds(
     bounds: Option<([f32; 3], [f32; 3])>,
     probe: [f32; 3],
     up: bool,
@@ -646,6 +656,17 @@ pub fn terrain_z_local(local_from_world: &Affine3A, eye_world: Vec3, terrain_wow
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn reveal_contains_the_full_volume_including_overlapping_buildings() {
+        let lower = Some(([-2., -2., 0.], [2., 2., 4.]));
+        let upper = Some(([-2., -2., 8.], [2., 2., 12.]));
+        assert!(super::contains_collision_bounds(lower, [0., 0., 2.]));
+        assert!(!super::contains_collision_bounds(lower, [0., 0., -1.]));
+        assert!(!super::contains_collision_bounds(lower, [0., 0., 9.]));
+        assert!(super::contains_collision_bounds(upper, [0., 0., 9.]));
+        assert!(!super::contains_collision_bounds(None, [0., 0., 2.]));
+        assert!(!super::contains_collision_bounds(lower, [3., 0., 2.]));
+    }
     use super::*;
     use benilla_assets::footprint_tri_bounds;
     use benilla_formats::FootprintTris;
@@ -654,6 +675,7 @@ mod tests {
     fn bare_model() -> WmoModel {
         WmoModel {
             wmo_id: 0,
+            source_fingerprint: 0,
             submeshes: Vec::new(),
             submesh_group: Vec::new(),
             portal_vertices: Vec::new(),

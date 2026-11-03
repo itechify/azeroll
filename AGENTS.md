@@ -5,6 +5,7 @@ Azeroll is a Katamari Damacy-style game set in vanilla WoW, built as a server-le
 Rust + Bevy) by way of its browser fork [wenilla](https://github.com/Arnesen/wenilla). It runs
 natively and in the browser (WebGPU), and needs no server, login or account.
 
+Start with [docs/azeroll/PROGRESS.md](docs/azeroll/PROGRESS.md) for the current state and next steps.
 Read [docs/azeroll/ARCHITECTURE.md](docs/azeroll/ARCHITECTURE.md) before changing game code: it
 holds the numbered decisions (D1, D2, …) the code comments cite, the telemetry and autopilot
 levers, and the open work. Engine code follows upstream's map and rules in `docs/METHOD.md`,
