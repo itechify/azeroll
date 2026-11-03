@@ -14,7 +14,7 @@ use crate::billboard::BillboardCard;
 use crate::doodad_anim::DoodadAnimHost;
 use crate::mesh_tag::alpha_bits;
 use crate::model_fade::DoodadFade;
-use crate::model_render::{model_material, MaterialCache, ShadeSel};
+use crate::model_render::{MaterialCache, ShadeSel, model_material};
 use crate::model_render::{ModelKind, ModelPart};
 use benilla_assets::materials::WowModelMaterial;
 
@@ -725,4 +725,53 @@ mod tests {
             vec![false, true, true, false]
         );
     }
+}
+
+/// Opt an entity-hosted frozen M2 batch into the ordinary moving-entity interior resolver.
+/// Unused by the streamer: callers explicitly choose an anchor and own its lifetime.
+pub fn frozen_interior_materials(
+    cache: &mut MaterialCache,
+    materials: &mut Assets<WowModelMaterial>,
+    light: &Buffer,
+    sub: &ModelSubmesh,
+    order: u16,
+) -> (Handle<WowModelMaterial>, Handle<WowModelMaterial>) {
+    let mut make = |fade| {
+        model_material(
+            cache,
+            materials,
+            sub.texture.clone(),
+            sub.blend,
+            sub.two_sided,
+            false,
+            true,
+            sub.emissive,
+            sub.additive,
+            fade,
+            sub.no_depth_write,
+            sub.no_depth_test,
+            sub.fog_policy,
+            sub.env_map,
+            ShadeSel::Matte,
+            order,
+            sub.uv_anim.as_ref(),
+            sub.rgb_anim.as_ref(),
+            sub.wmo_batch,
+            sub.sidn,
+            sub.window,
+            false,
+            light,
+            None,
+        )
+    };
+    let steady = make(false);
+    let blend = if matches!(
+        sub.blend,
+        ModelBlend::Blend | ModelBlend::Mod | ModelBlend::Mod2x
+    ) {
+        steady.clone()
+    } else {
+        make(true)
+    };
+    (steady, blend)
 }

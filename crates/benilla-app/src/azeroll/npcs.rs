@@ -111,6 +111,9 @@ enum Role {
     Guard,
     Villager,
     Kid,
+    /// A cousin of Fizzwick (D33): a villager who ignores a ball below `catch[0]`, leads a chase
+    /// inside the window and cowers above it.
+    Cousin,
 }
 #[derive(Clone, Deserialize)]
 struct Spec {
@@ -134,6 +137,21 @@ struct Spec {
     /// `polish`, `sleeper` or `brave` ([`Quirk`]).
     #[serde(default)]
     quirk: String,
+    /// A cousin's wardrobe key (stable, stored in saves).
+    #[serde(default)]
+    cousin: Option<String>,
+    /// Multiplies the display's own model scale (a cousin is picked to open at a chosen size).
+    #[serde(default = "one")]
+    scale: f32,
+    /// A cousin's catch window in ball diameters: `[opens, swallowed-above]`.
+    #[serde(default)]
+    catch: Option<[f32; 2]>,
+    /// What a cousin says over their head inside the window.
+    #[serde(default)]
+    caption: Option<String>,
+}
+fn one() -> f32 {
+    1.0
 }
 #[derive(Resource, Default, Deserialize)]
 struct Cast {
@@ -235,7 +253,7 @@ fn fear(role: Role, radius: f32, axis: f32, panic: f32) -> Fear {
         Contact::Dislodge => {
             let (margin, infected) = match role {
                 Role::Guard => (0.0, 0.0),
-                Role::Villager => (VILLAGER_MARGIN, PANIC_GAIN * panic),
+                Role::Villager | Role::Cousin => (VILLAGER_MARGIN, PANIC_GAIN * panic),
                 Role::Kid => (KID_MARGIN, PANIC_GAIN * panic),
             };
             if contact(radius * (1.0 + margin + infected), axis) == Contact::RollUp {
@@ -276,6 +294,52 @@ fn reaction(
     }
 }
 
+/// A cousin runs this much faster than a villager would (D33): a chase, not a stroll. Still below
+/// the ball's own top speed at the size the cousin opens at, so the catch is fair.
+const COUSIN_SPEED: f32 = 1.3;
+/// A cousin notices a ball inside the window this close (plus its radius), and gives up the chase
+/// beyond [`COUSIN_CHASE`].
+const COUSIN_NOTICE: f32 = 6.0;
+const COUSIN_CHASE: f32 = 10.0;
+/// Seconds a cousin waves and speaks before they run.
+const COUSIN_WAVE: f32 = 2.0;
+
+/// What a cousin of Fizzwick wants to do about the ball (D33). Below the catch window they ignore
+/// it entirely (the ball cannot roll them up yet); inside it they wave, speak and lead a circle
+/// chase while the ball is close; above it they cower and are swallowed at a touch.
+fn cousin_wants(
+    catch: Option<[f32; 2]>,
+    noticed_at: f32,
+    now: f32,
+    diameter: f32,
+    radius: f32,
+    distance: f32,
+    prev: State,
+) -> State {
+    use super::replay::{window, Window};
+    let Some(catch) = catch else {
+        return State::Ambient;
+    };
+    match window(diameter, catch) {
+        Window::Below => State::Ambient,
+        Window::Above => {
+            if distance < COUSIN_NOTICE + radius {
+                State::Cower
+            } else {
+                State::Ambient
+            }
+        }
+        Window::Inside => match prev {
+            State::Notice if now - noticed_at >= COUSIN_WAVE => State::Flee,
+            State::Notice => State::Notice,
+            State::Flee if distance < COUSIN_CHASE + radius => State::Flee,
+            State::Flee | State::Cower => State::Ambient,
+            _ if distance < COUSIN_NOTICE + radius => State::Notice,
+            _ => State::Ambient,
+        },
+    }
+}
+
 /// Fastest flee burst for an NPC of this maximum axis: always below the ball's undashed speed at
 /// the size where it can roll the NPC up, so every runner is catchable. `urgency` (0..1) is panic.
 fn flee_speed(axis: f32, phase: f32, urgency: f32) -> f32 {
@@ -306,6 +370,12 @@ fn carry_model(tag: &str) -> Option<&'static str> {
         "cleaver" => r"World\Generic\Human\Passive Doodads\Food&Utensils\Cleaver01.m2",
         "bottle" => r"World\Generic\Human\Passive Doodads\Bottles\Bottle01.m2",
         "jug" => r"World\Azeroth\Elwynn\PassiveDoodads\jugs\jug01.m2",
+        // Market Day: the stallholders' wares, big enough to matter by the time they bolt.
+        // Not a `G_Pumpkin_0x`: all three wear the jack-o'-lantern texture.
+        "pumpkin" => r"World\Azeroth\Duskwood\PassiveDoodads\Bush\Pumpkin01.m2",
+        "watermelon" => r"World\Goober\G_Watermelon.m2",
+        "fish" => r"World\Generic\Human\Passive Doodads\Food\FishPlatter01.m2",
+        "cheese" => r"World\Generic\Human\Passive Doodads\Food\CheeseWheelSwiss01.m2",
         _ => return None,
     })
 }
@@ -349,6 +419,10 @@ pub(super) struct Npc {
     dropped: bool,
     polish_logged: bool,
     charge_until: f32,
+    /// A guard bumps no more often than this ([`super::ram::NPC_COOLDOWN`]) ...
+    ram_until: f32,
+    /// ... and gives ground until this, so he is not on the ball's way out.
+    back_until: f32,
     bounce: Vec3,
     /// Where it was last told to look, until `look_until`.
     look_at: Vec3,
@@ -361,6 +435,26 @@ pub(super) struct Npc {
     pulse: u32,
     cry_at: f32,
     react_at: f32,
+    /// A cousin's chase: when they noticed the ball (run seconds).
+    noticed_at: f32,
+}
+
+/// What the replay layer needs to know of a cousin.
+pub(super) struct CousinFacts<'a> {
+    pub key: &'a str,
+    pub name: &'a str,
+    pub catch: [f32; 2],
+}
+
+impl Npc {
+    /// This NPC as a cousin of Fizzwick, if they are one.
+    pub(super) fn cousin(&self) -> Option<CousinFacts<'_>> {
+        Some(CousinFacts {
+            key: self.spec.cousin.as_deref()?,
+            name: &self.spec.name,
+            catch: self.spec.catch?,
+        })
+    }
 }
 
 /// An expanding cry.
@@ -511,7 +605,7 @@ impl Village {
 #[derive(SystemParam)]
 struct Fx<'w> {
     emotes: Option<Res<'w, crate::sound::EmoteSounds>>,
-    rams: MessageWriter<'w, super::collect::Ram>,
+    rammer: super::ram::Rammer<'w>,
     seq: ResMut<'w, PlaySeq>,
     anim: MessageWriter<'w, EmoteAnim>,
     sound: MessageWriter<'w, SpellKitSound>,
@@ -577,6 +671,7 @@ pub(super) fn plugin(app: &mut App) {
         PostUpdate,
         park_carried
             .in_set(bevy::app::AnimationSystems)
+            .before(super::lod::ParkCarried)
             .before(bevy::animation::advance_animations),
     );
     app.add_systems(
@@ -606,8 +701,20 @@ pub(super) fn plugin(app: &mut App) {
                 .run_if(super::playing),
         );
 }
-fn reload(mut cast: ResMut<Cast>, mut pending: ResMut<Pending>, mut village: ResMut<Village>) {
-    let embedded = include_str!("goldshire-npcs.toml");
+fn reload(
+    mut cast: ResMut<Cast>,
+    mut pending: ResMut<Pending>,
+    mut village: ResMut<Village>,
+    current: Res<super::campaign::CurrentLevel>,
+) {
+    // The cast comes from the level's registry entry; a level with none has an empty village.
+    let Some(embedded) = current.entry().cast else {
+        *cast = Cast::default();
+        pending.rows.clear();
+        *village = Village::default();
+        info!("azeroll NPC cast: none for {}", current.id());
+        return;
+    };
     #[cfg(not(target_arch = "wasm32"))]
     let override_text =
         crate::webenv::var("WOW_AZEROLL_NPCS").and_then(|p| match std::fs::read_to_string(p) {
@@ -673,7 +780,7 @@ fn spawn(
             .unwrap()
             .model(spec.display)
             .unwrap();
-        let scale = m.scale;
+        let scale = m.scale * spec.scale;
         let sex = m.npc_appearance.as_ref().map_or(0, |a| a.sex as u32);
         let half = wow_to_bevy(bounds.stand_extent).abs() * 0.5;
         if half.min_element() <= 0.0 {
@@ -710,6 +817,9 @@ fn spawn(
         );
         village.names.insert(spec.name.clone(), entity);
         let quirk = Quirk::parse(&spec.quirk);
+        if spec.role == Role::Cousin {
+            commands.entity(entity).insert(super::replay::HumanOnly);
+        }
         commands.entity(entity).insert((
             Collectible {
                 name: Cow::Owned(spec.name.clone()),
@@ -753,6 +863,8 @@ fn spawn(
                 dropped: false,
                 polish_logged: false,
                 charge_until: 0.0,
+                ram_until: 0.0,
+                back_until: 0.0,
                 bounce: Vec3::ZERO,
                 look_at: Vec3::ZERO,
                 look_until: 0.0,
@@ -762,6 +874,7 @@ fn spawn(
                 pulse: 0,
                 cry_at: 0.0,
                 react_at: 0.0,
+                noticed_at: -100.0,
             },
         ));
         pending.rows.remove(i);
@@ -985,6 +1098,7 @@ fn behave(
     world: WorldPoint,
     collision: WorldCollision,
     mut fx: Fx,
+    mut says: MessageWriter<super::replay::CousinSays>,
     cameras: Query<&GlobalTransform, With<benilla_world::view::WorldCamera>>,
     mut q: Query<
         (
@@ -1042,6 +1156,7 @@ fn behave(
         n.wait = (n.wait - dt).max(0.0);
         let phase = now * 6.0 + n.phase;
         let kid = n.spec.role == Role::Kid;
+        let cousin = n.spec.role == Role::Cousin;
         if let Some(a) = attached {
             // Carried (#22): newest eight animate (park_carried); the rest ride quietly.
             commands.entity(e).insert(crate::entities::Carried);
@@ -1066,8 +1181,18 @@ fn behave(
                 n.pulse = v.pulse;
                 n.cry_at = now + 3.0 + 4.0 * unit(n.seed, 21);
                 n.react_at = 0.0;
-                if fx.voice(v, "HELPME", kid, n.sex, ball.pos, Prio::High) {
+                if fx.voice(
+                    v,
+                    if cousin { "CHEER" } else { "HELPME" },
+                    kid,
+                    n.sex,
+                    ball.pos,
+                    Prio::High,
+                ) {
                     n.voice_at = now + 6.0;
+                }
+                if cousin {
+                    fx.emote(e, 68);
                 }
             }
             if active {
@@ -1078,7 +1203,7 @@ fn behave(
                 }
                 if n.react_at > 0.0 && now >= n.react_at {
                     n.react_at = 0.0;
-                    let cheer = unit(n.seed, 7 + v.pulse) < 0.45;
+                    let cheer = cousin || unit(n.seed, 7 + v.pulse) < 0.45;
                     let id = if cheer {
                         68
                     } else if n.sex == 0 {
@@ -1111,7 +1236,7 @@ fn behave(
                     n.cry_at = now + 8.0 + 8.0 * unit(n.seed, 25 + (now as u32 % 7));
                     if fx.voice(
                         v,
-                        "HELPME",
+                        if cousin { "CHEER" } else { "HELPME" },
                         kid,
                         n.sex,
                         muffled_at(&ball, camera),
@@ -1119,7 +1244,16 @@ fn behave(
                     ) {
                         v.stats.cries += 1;
                         if !kid {
-                            fx.emote(e, if n.sex == 0 { 78 } else { 95 });
+                            fx.emote(
+                                e,
+                                if cousin {
+                                    68
+                                } else if n.sex == 0 {
+                                    78
+                                } else {
+                                    95
+                                },
+                            );
                         }
                     }
                 }
@@ -1167,7 +1301,7 @@ fn behave(
 
         // Hear the ripples that have reached us.
         let mut heard: Option<(Cry, Vec3, f32)> = None;
-        if n.quirk != Quirk::Polish && !asleep {
+        if n.quirk != Quirk::Polish && !asleep && role != Role::Cousin {
             for a in v.alarms.iter_mut() {
                 let d = flat(a.at - pos).length();
                 let (range, power) = a.cry.shape();
@@ -1225,6 +1359,18 @@ fn behave(
             }
             wanted = State::Ambient;
         }
+        if role == Role::Cousin {
+            let was = n.state;
+            wanted = cousin_wants(
+                n.spec.catch,
+                n.noticed_at,
+                now,
+                ball.diameter(),
+                ball.radius,
+                distance,
+                was,
+            );
+        }
         // Hand in hand: if the other runs and this ball is no wall to us, so do we.
         if wanted != State::Flee
             && !asleep
@@ -1268,7 +1414,8 @@ fn behave(
                 }
                 // A calm village trots back to its post once the ball is out of sight; a panicking
                 // one keeps its distance while the ball is anywhere near.
-                let keep_away = mood >= Mood::Panic && distance < CALM_DOWN_RANGE + ball.radius;
+                let keep_away =
+                    mood >= Mood::Panic && distance < CALM_DOWN_RANGE + ball.radius && !cousin;
                 if now >= n.flee_until && wanted != State::Flee && !keep_away {
                     next = wanted;
                 }
@@ -1277,7 +1424,7 @@ fn behave(
                 if wanted == State::Flee {
                     let freeze = unit(n.seed, 17 + n.flee_count) < FREEZE_ODDS
                         || (now - n.alarm_t < 1.0 && n.panic > 0.6);
-                    next = if freeze && role != Role::Guard {
+                    next = if freeze && !matches!(role, Role::Guard | Role::Cousin) {
                         State::Freeze
                     } else {
                         State::Flee
@@ -1325,6 +1472,14 @@ fn behave(
                     }
                     fx.voice(v, "INCOMING", kid, n.sex, pos, Prio::Normal);
                 }
+                State::Notice if role == Role::Cousin => {
+                    // The chase opens: a wave, and the cousin's one-liner over their head.
+                    n.noticed_at = now;
+                    fx.emote(e, 67);
+                    if let Some(text) = n.spec.caption.clone() {
+                        says.write(super::replay::CousinSays { entity: e, text });
+                    }
+                }
                 State::Charge => {
                     n.charge_until = now + 5.0;
                     v.charge_cd = now + CHARGE_COOLDOWN;
@@ -1342,6 +1497,7 @@ fn behave(
             n.style = {
                 let roll = unit(shared, 29 + n.flee_count);
                 match mood {
+                    _ if role == Role::Cousin => Style::Circle,
                     Mood::Chaos if roll < 0.34 => Style::Circle,
                     Mood::Chaos if roll < 0.68 => Style::Hide,
                     Mood::Panic if roll < 0.25 => Style::Hide,
@@ -1398,19 +1554,18 @@ fn behave(
         let state = n.state;
 
         // A guard bumps a ball that is a wall to it and in reach (Ram: the ball is knocked back).
+        // Fair play ([`super::ram`]): his own cooldown, the village-wide grace, a knock bent away
+        // from walls, and then he gives ground.
         if role == Role::Guard
             && contact(ball.radius, axis) == Contact::Wall
             && distance < ball.radius + 0.6
-            && n.wait == 0.0
+            && now >= n.ram_until
             && matches!(state, State::Ambient | State::Curious | State::Notice)
+            && fx.rammer.ram(&collision, &ball, e, c.name.clone(), toward)
         {
-            fx.rams.write(super::collect::Ram {
-                entity: e,
-                name: c.name.clone(),
-                dir: -toward,
-            });
             fx.emote(e, 16);
-            n.wait = 5.0;
+            n.ram_until = now + super::ram::NPC_COOLDOWN;
+            n.back_until = now + super::ram::BACK_OFF;
         }
 
         match state {
@@ -1471,10 +1626,16 @@ fn behave(
                         "work" => 62,
                         "sleep" => 100,
                         "eat" => 61,
+                        // Market Day: stallholders cry their wares, the bard's crowd dances and
+                        // claps, the angler fishes.
+                        "bark" => [64, 81, 67, 64][(n.phase as usize + now as usize / 5) % 4],
+                        "dance" => 69,
+                        "applaud" => 80,
+                        "fish" => 134,
                         _ => [60, 70, 68, 84][(n.phase as usize + now as usize / 5) % 4],
                     };
                     fx.emote(e, id);
-                    n.timer = if id == 62 {
+                    n.timer = if matches!(id, 62 | 69) {
                         2.0
                     } else {
                         5.0 + n.phase.rem_euclid(3.0)
@@ -1517,7 +1678,7 @@ fn behave(
                 look = Some(toward);
                 if role == Role::Guard {
                     // Brace in a line: step up from the post toward the ball and stand there.
-                    if n.spec.path.is_empty() {
+                    if n.spec.path.is_empty() && now >= n.ram_until {
                         let hold = n.home + flat(ball.pos - n.home).normalize_or_zero() * 3.0;
                         let to = flat(hold - pos);
                         if to.length() > 0.5 && distance > ball.radius + 2.5 {
@@ -1692,6 +1853,11 @@ fn behave(
                 }
                 speed = if n.state == State::Flee {
                     flee_speed(axis, now * 2.4 + shared_phase, n.panic)
+                        * if role == Role::Cousin {
+                            COUSIN_SPEED
+                        } else {
+                            1.0
+                        }
                 } else {
                     0.0
                 };
@@ -1718,6 +1884,17 @@ fn behave(
                     n.voice_at = now + 6.0 + n.phase.rem_euclid(5.0);
                 }
             }
+        }
+
+        // A guard who has just bumped the ball steps back from it, off its way out.
+        if role == Role::Guard
+            && now < n.back_until
+            && matches!(state, State::Ambient | State::Curious | State::Notice)
+        {
+            dir = -toward;
+            speed = 1.8;
+            backing = true;
+            look = Some(toward);
         }
 
         // ---- move --------------------------------------------------------------------------
@@ -1846,10 +2023,43 @@ mod tests {
     }
 
     #[test]
+    fn a_cousin_ignores_a_small_ball_chases_in_the_window_and_cowers_above_it() {
+        let catch = Some([1.33, 2.0]);
+        let want = |d: f32, dist: f32, prev: State, noticed: f32, now: f32| {
+            cousin_wants(catch, noticed, now, d, d / 2.0, dist, prev)
+        };
+        // Below the window: ambient at any distance, whatever they were doing.
+        assert_eq!(want(1.2, 0.5, State::Ambient, -100.0, 10.0), State::Ambient);
+        assert_eq!(want(1.2, 0.5, State::Notice, 9.0, 10.0), State::Ambient);
+        // Inside: far away they carry on; close, they notice; two seconds on, they run.
+        assert_eq!(
+            want(1.5, 30.0, State::Ambient, -100.0, 10.0),
+            State::Ambient
+        );
+        assert_eq!(want(1.5, 5.0, State::Ambient, -100.0, 10.0), State::Notice);
+        assert_eq!(want(1.5, 5.0, State::Notice, 10.0, 11.0), State::Notice);
+        assert_eq!(want(1.5, 5.0, State::Notice, 10.0, 12.0), State::Flee);
+        // The chase holds while the ball is within 10 yd (plus its radius) and gives up beyond.
+        assert_eq!(want(1.5, 10.5, State::Flee, 10.0, 15.0), State::Flee);
+        assert_eq!(want(1.5, 12.0, State::Flee, 10.0, 15.0), State::Ambient);
+        // Above: cowering on sight, nothing at a distance.
+        assert_eq!(want(2.5, 3.0, State::Ambient, -100.0, 10.0), State::Cower);
+        assert_eq!(
+            want(2.5, 40.0, State::Ambient, -100.0, 10.0),
+            State::Ambient
+        );
+        // A cousin row with no window is a plain bystander.
+        assert_eq!(
+            cousin_wants(None, 0.0, 1.0, 1.5, 0.75, 1.0, State::Ambient),
+            State::Ambient
+        );
+    }
+
+    #[test]
     fn cast_and_routes() {
         let c: Cast = toml::from_str(include_str!("goldshire-npcs.toml")).unwrap();
-        assert_eq!(c.npc.len(), 33);
-        assert_eq!(c.npc.iter().filter(|n| n.role == Role::Kid).count(), 7);
+        assert_eq!(c.npc.len(), 70);
+        assert_eq!(c.npc.iter().filter(|n| n.role == Role::Kid).count(), 11);
         assert!(
             c.npc
                 .iter()
@@ -1890,8 +2100,10 @@ mod tests {
         assert_eq!(Mood::of_tier(5), Mood::Chaos);
         assert!(Mood::Curious < Mood::Nervous && Mood::Panic < Mood::Chaos);
         // The ladder is defined over the real table: Panic is the row that names the adults.
-        let rows = super::super::level::TIERS;
-        assert_eq!(rows[3].1, "NPCs and horses");
+        let rows = super::super::design::parse(include_str!("goldshire.toml"))
+            .unwrap()
+            .tiers;
+        assert_eq!(rows[3].name, "Shoppers and horses");
     }
     #[test]
     fn fear_is_keyed_to_contact() {

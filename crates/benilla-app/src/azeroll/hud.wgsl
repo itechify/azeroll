@@ -2,15 +2,17 @@
 //   0  the size dial: a layered rosette with the goal ring around it,
 //   1  the clock: a pie that drains as the time runs out,
 //   2  a model bubble: a render-target image in a round, translucent glass,
-//   3  a guide arrow: a soft chevron pointing up, turned by the UI node.
+//   3  a guide arrow: a soft chevron pointing up, turned by the UI node,
+//   4  Fizzwick's porthole: the commissioner's portrait in a brass-rimmed round window.
 // Colours are written as gamma bytes (the player-UI lane composites in gamma, `ui_gamma.wgsl` decodes
 // once), and the bubble's texture is the booth target, which already holds gamma.
 #import bevy_ui::ui_vertex_output::UiVertexOutput
 
 // x kind, y seconds, z alpha, w pulse (a brief flash on growth; kind 2: the rim flash)
 @group(1) @binding(0) var<uniform> kt: vec4<f32>;
-// kind 0: x goal fill 0..1, y celebrate 0..1, z ring tick 1..0 (a growth beat), w bloom 1..0 (a tier)
-// kind 1: x elapsed fraction 0..1, y urgency 0..1, z free roll (1)
+// kind 0 (and 10 + stars lit + the newest star's pop 0..0.99, the dial after a size goal):
+//   x goal fill 0..1, y celebrate 0..1, z ring tick 1..0 (a growth beat), w bloom 1..0 (a tier)
+// kind 1: x elapsed fraction 0..1, y urgency 0..1, z free roll (1), w finish key held 0..1
 // kind 2: x rim (0 glass, 1 gold), yzw the flash colour (strength is kt.w)
 // kind 3: xyz the arrow's colour
 @group(1) @binding(1) var<uniform> p: vec4<f32>;
@@ -45,6 +47,22 @@ fn over(dst: vec4<f32>, src: vec3<f32>, a: f32) -> vec4<f32> {
 // A scalloped disc: radius `r0` wobbling by `amp` with `n` petals.
 fn petal(r: f32, th: f32, r0: f32, amp: f32, n: f32, phase: f32) -> f32 {
     return r - (r0 + amp * cos(n * th + phase));
+}
+
+// A five-point star of outer radius `r` at `c`, point up on screen (screen y runs down).
+fn star_d(q: vec2<f32>, c: vec2<f32>, r: f32) -> f32 {
+    let k1 = vec2<f32>(0.809016994375, -0.587785252292);
+    let k2 = vec2<f32>(-k1.x, k1.y);
+    var pp = (q - c) / r;
+    pp = vec2<f32>(abs(pp.x), -pp.y);
+    pp = pp - 2.0 * max(dot(k1, pp), 0.0) * k1;
+    pp = pp - 2.0 * max(dot(k2, pp), 0.0) * k2;
+    pp.x = abs(pp.x);
+    pp.y = pp.y - 1.0;
+    let rf = 0.45;
+    let ba = rf * vec2<f32>(-k1.y, k1.x) - vec2<f32>(0.0, 1.0);
+    let h = clamp(dot(pp, ba) / dot(ba, ba), 0.0, 1.0);
+    return length(pp - ba * h) * sign(pp.y * ba.x - pp.x * ba.y) * r;
 }
 
 fn dial(uv: vec2<f32>, w: f32) -> vec4<f32> {
@@ -122,6 +140,22 @@ fn dial(uv: vec2<f32>, w: f32) -> vec4<f32> {
     // Flash on growth.
     rose = vec4<f32>(rose.rgb + flash * 0.35 * rose.a, rose.a);
     c = over(c, rose.rgb, rose.a);
+    // The stars after a size goal: gold, in a row under the number, the newest popping in.
+    let stars = floor(kt.x) - 10.0;
+    if stars >= 1.0 {
+        let pop = fract(kt.x) / 0.99;
+        for (var i = 0; i < 4; i++) {
+            let fi = f32(i);
+            if fi < stars {
+                let cx = (fi - (stars - 1.0) * 0.5) * 0.2;
+                let newest = select(0.0, 1.0, fi == stars - 1.0);
+                let sz = 0.085 * (1.0 + 0.6 * pop * newest);
+                let sd = star_d(q, vec2<f32>(cx, 0.33), sz);
+                c = over(c, INK, cover(sd - 0.02, w) * 0.8);
+                c = over(c, mix(GOLD, CREAM, 0.35 + 0.4 * pop * newest), cover(sd, w));
+            }
+        }
+    }
     // A tier's bloom: petal rings burst outward from the centre, each a little later and a
     // different colour, thinning as they reach the ring.
     if bloom > 0.001 {
@@ -189,6 +223,12 @@ fn clock(uv: vec2<f32>, w: f32) -> vec4<f32> {
     c = over(c, CREAM, hand);
     c = over(c, INK, cover(r - 0.13, w));
     c = over(c, GOLD, cover(r - 0.095, w));
+    // The finish key held: a bright arc fills the bezel clockwise.
+    let hold = p.w;
+    if hold > 0.001 && ang / TAU < hold {
+        let arc = cover(abs(r - 0.935) - 0.04, w);
+        c = over(c, CREAM, arc);
+    }
     return c;
 }
 
@@ -216,6 +256,30 @@ fn bubble(uv: vec2<f32>, w: f32) -> vec4<f32> {
     let hl = vec2<f32>(-0.45, -0.52);
     let hd = length((q - hl) * vec2<f32>(0.85, 1.7));
     c = over(c, vec3<f32>(1.0), cover(hd - 0.2, 0.08) * 0.20 * cover(r - 0.9, w));
+    return c;
+}
+
+// Fizzwick's porthole: a brass-rimmed round window on the commissioner stage's render (the upper
+// part of the portrait target), over a warm workshop backdrop.
+fn porthole(uv: vec2<f32>, w: f32) -> vec4<f32> {
+    let q = (uv - 0.5) * 2.0;
+    let r = length(q);
+    var c = vec4<f32>(0.0);
+    c = over(c, INK, cover(r - 0.99, w) * 0.55);
+    c = over(c, BRONZE, cover(r - 0.95, w));
+    c = over(c, GOLD, cover(r - 0.89, w) * 0.9);
+    c = over(c, BRONZE, cover(r - 0.86, w));
+    c = over(c, mix(vec3<f32>(0.46, 0.33, 0.18), vec3<f32>(0.16, 0.11, 0.08), uv.y), cover(r - 0.83, w));
+    let tuv = vec2<f32>(0.5 + (uv.x - 0.5) * 0.46, 0.27 + uv.y * 0.345);
+    let t = textureSample(tex, tex_sampler, tuv);
+    c = over(c, t.rgb, t.a * cover(r - 0.83, w));
+    // Rivets round the bezel.
+    let th = atan2(q.x, -q.y);
+    let rv = abs(fract(th / TAU * 8.0 + 0.5) - 0.5) * (TAU * 0.925 / 8.0);
+    c = over(c, CREAM, cover(length(vec2<f32>(rv, r - 0.925)) - 0.028, w) * 0.8);
+    // A specular arc at the top left.
+    let hd = length((q - vec2<f32>(-0.4, -0.5)) * vec2<f32>(0.85, 1.7));
+    c = over(c, vec3<f32>(1.0), cover(hd - 0.2, 0.08) * 0.14 * cover(r - 0.8, w));
     return c;
 }
 
@@ -254,13 +318,15 @@ fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
     // One pixel in `uv`-space-of-the-unit-disc (the widget is square).
     let w = 2.0 / max(in.size.x, 1.0);
     var c = vec4<f32>(0.0);
-    let kind = i32(kt.x + 0.5);
-    if kind == 0 {
+    let kind = i32(floor(kt.x + 0.01));
+    if kind == 0 || kind >= 10 {
         c = dial(in.uv, w);
     } else if kind == 1 {
         c = clock(in.uv, w);
     } else if kind == 3 {
         c = arrow(in.uv, w);
+    } else if kind == 4 {
+        c = porthole(in.uv, w);
     } else {
         c = bubble(in.uv, w);
     }

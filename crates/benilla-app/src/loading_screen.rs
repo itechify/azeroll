@@ -166,6 +166,11 @@ pub(crate) struct LoadingScreen {
     last_pos: Option<Vec3>,
 }
 
+/// A mode's own loading-screen picture, shown instead of the map's art on every load. Absent by
+/// default (the reference's per-map art); Azeroll inserts its title painting.
+#[derive(Resource, Clone)]
+pub(crate) struct LoadingArtOverride(pub Handle<Image>);
+
 impl LoadingScreen {
     /// Whether the opaque cover is up; the world camera renders under it, never behind the glue.
     pub(crate) fn covering(&self) -> bool {
@@ -403,6 +408,7 @@ fn drive_loading_screen(
     stream: (
         Res<WorldLoadProgress>,
         Res<benilla_world::terrain_stream::ViewFocus>,
+        Option<Res<LoadingArtOverride>>,
     ),
     current_map: Option<Res<CurrentMap>>,
     maps: Option<Res<MapCatalogRes>>,
@@ -450,7 +456,7 @@ fn drive_loading_screen(
         transfer,
         roster,
     ) = edges;
-    let (progress, focus) = (&stream.0, &stream.1);
+    let (progress, focus, art_override) = (&stream.0, &stream.1, &stream.2);
     let now = time.elapsed_secs();
     let map_id = current_map.as_ref().map(|m| m.0);
     // The physics hold releases on the same residency signal, so the body's world is live first.
@@ -625,7 +631,14 @@ fn drive_loading_screen(
                 img.color = Color::BLACK;
             }
         }
-        if let (Some(map_id), Some(maps), Some(screens), Some(assets)) =
+        if let Some(art) = art_override.as_ref().map(|a| a.0.clone()) {
+            // A mode's own picture replaces every map's art (and covers a load with no map).
+            if let Ok((mut img, _)) = backdrop.single_mut() {
+                img.image = art;
+                img.color = Color::WHITE;
+                screen.art_resolved = true;
+            }
+        } else if let (Some(map_id), Some(maps), Some(screens), Some(assets)) =
             (screen.map, maps.as_ref(), screens.as_ref(), assets.as_mut())
         {
             let path = maps

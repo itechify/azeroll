@@ -1,25 +1,22 @@
-//! The Elwynn Forest level: where it is, how big things are, what wins it. Shared tuning constants
-//! live here so the ball, collection and spawning agree; module-local feel constants (acceleration,
-//! camera damping) stay in their own modules.
+//! What every level shares: the map, how big things are, how growth is credited, the tier table
+//! and what wins a level. Where a level starts, how far it reaches and what its tiers are called is
+//! recipe data (`design::Design`); the global tuning lives here so the ball, collection and spawning
+//! agree. Module-local feel constants (acceleration, camera damping) stay in their own modules.
 
 use benilla_world::schedule::WorldStage;
 use bevy::prelude::*;
 
 use super::collect::{contact, Contact};
 use super::progress::{self, Flow, Progress};
-use super::{playing, BallState, Collected, Collectible, Kind, Phase, Run};
+use super::ritual::{Cue, Ending};
+use super::{
+    playing, BallState, Collected, Collectible, GoalReached, Kind, Phase, Run, StarEarned,
+};
 use crate::loading_screen::LoadingScreen;
 use crate::sound::GlueSound;
 
-/// Eastern Kingdoms.
+/// Eastern Kingdoms: all three levels are on map 0.
 pub(crate) const MAP: u32 = 0;
-
-/// The ball's start, WoW world coordinates (x north, y west, z up): the road outside the Lion's
-/// Pride Inn in Goldshire. `z` is a hint; the ball drops onto the terrain once its tile loads.
-pub(crate) const START: [f32; 3] = [-9450.0, 60.0, 57.0];
-
-/// The ball's radius at the start, yards. A mug is ~0.15, a barrel ~0.6, a wolf ~1, a tree ~6.
-pub(crate) const START_RADIUS: f32 = 0.25;
 
 /// Maximum full bbox axis allowed per yard of ball radius (D >= 2.15 * axis).
 pub(crate) const COLLECT_RATIO: f32 = 2.0 / 2.15;
@@ -27,90 +24,48 @@ pub(crate) const DISLODGE_RATIO: f32 = 1.5;
 /// Occupied fraction of the oriented box; credited in sphere-normalized yards cubed.
 pub(crate) const FILL_FACTOR: f32 = 0.5;
 
-/// Map doodads within this many yards of [`START`] are claimed from the streamer and become
-/// collectible copies; beyond it the world keeps its optimized scenery.
-pub(crate) const CLAIM_RADIUS: f32 = 650.0;
-
-/// The ball may not wander further than this from [`START`], yards (a soft leash).
-pub(crate) const LEASH: f32 = 680.0;
-
-/// The level's growth tiers, by ball diameter in yards: the HUD announces each on crossing it. A
-/// tier opens when every representative it names ([`TIER_REPS`]) is edible, i.e.
-/// `collect::contact(radius, axis) == RollUp`, so the diameter is `2.15 x` the largest
-/// representative's maximum full axis (the roster's fits: chicken 0.35, rabbit 0.48, sheep 0.8,
-/// cow 1.2, farm horse 1.8, bear 2.3, gnoll 2.8, Hogger 4; adult NPCs measure 1.93-2.01).
-///
-/// These are the values for the shipped recipe. The running game derives the same table from the
-/// resolved roster and the spawned NPCs ([`TierTable`]) and warns where this one has drifted
-/// from it; a test pins the two together for `goldshire.toml`.
-pub(crate) const TIERS: &[(f32, &str)] = &[
-    (0.0, "Tiny things"),
-    (1.04, "Critters"),
-    (2.58, "Creatures"),
-    (4.33, "NPCs and horses"),
-    (6.02, "Forest giants"),
-    (8.6, "Hogger"),
-];
-
-/// What a [`TIERS`] row names, for deriving its diameter.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// What a tier row names, for deriving its diameter.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Rep {
     /// A roster species, by name; its fitted maximum axis.
-    Species(&'static str),
+    Species(String),
     /// The grown-up NPCs of the authored cast (children are below [`ADULT_MIN_AXIS`]).
     Adults,
 }
 
-/// Parallel to [`TIERS`]: the things each tier is named for. The first tier is the start and
-/// names nothing.
-pub(crate) const TIER_REPS: &[&[Rep]] = &[
-    &[],
-    &[Rep::Species("Chicken"), Rep::Species("Rabbit")],
-    &[Rep::Species("Sheep"), Rep::Species("Cow")],
-    &[Rep::Adults, Rep::Species("Farm horse")],
-    &[Rep::Species("Forest Bear"), Rep::Species("Riverpaw Gnoll")],
-    &[Rep::Species("Hogger")],
-];
+impl Rep {
+    /// `species:<Name>` or `adults`, as a recipe writes them.
+    pub(crate) fn parse(text: &str) -> Option<Self> {
+        match text.split_once(':') {
+            Some(("species", name)) if !name.is_empty() => Some(Self::Species(name.to_string())),
+            None if text == "adults" => Some(Self::Adults),
+            _ => None,
+        }
+    }
+}
 
-/// Parallel to [`TIERS`]: the areas a tier's camera beat glances toward, from what the ball has
-/// just outgrown to what it can now reach ("the market from the inn yard, the farms from the
-/// road"). [`reveal_target`] takes the nearest one the ball is not already standing in. Names are
-/// `goldshire.toml` area names; a test pins them to it.
-pub(crate) const TIER_REVEALS: &[&[&str]] = &[
-    &[],
-    &["Market", "Northern goods", "Smithy"],
-    &["Smithy", "Broken cart", "Roadside camp", "Southwest road"],
-    &[
-        "Roadside camp",
-        "Southwest road",
-        "Maclure harvest",
-        "Stonefield harvest",
-    ],
-    &["Riverpaw camp", "Stonefield harvest", "Maclure harvest"],
-    &["Riverpaw camp"],
-];
+/// A recipe string with `'static` lifetime, for the messages that carry a tier's name. Each
+/// distinct name is leaked once, so reloading a level on every restart costs nothing more.
+fn intern(s: &str) -> &'static str {
+    use std::collections::HashSet;
+    use std::sync::{Mutex, OnceLock};
+    static NAMES: OnceLock<Mutex<HashSet<&'static str>>> = OnceLock::new();
+    let mut names = NAMES.get_or_init(Default::default).lock().unwrap();
+    if let Some(&known) = names.get(s) {
+        return known;
+    }
+    let leaked: &'static str = Box::leak(s.to_owned().into_boxed_str());
+    names.insert(leaked);
+    leaked
+}
 
-/// A glance toward an area nearer than this (beyond its own half radius) would look at the
-/// ball's feet, so it is not one.
-const REVEAL_MIN_DIST: f32 = 12.0;
-
-/// Where tier `tier`'s camera beat looks, in Bevy yards, and what it is called: the nearest of
-/// [`TIER_REVEALS`] that is open ground and not already underfoot.
-pub(super) fn reveal_target(
-    design: &super::design::Design,
-    tier: usize,
-    from: Vec3,
-) -> Option<(&str, Vec3)> {
-    let flat = |c: Vec3| Vec3::new(c.x - from.x, 0.0, c.z - from.z).length();
-    TIER_REVEALS
-        .get(tier)?
-        .iter()
-        .filter_map(|name| design.areas.iter().find(|a| a.name == *name))
-        .filter(|a| !a.enclosed)
-        .map(|a| (a, super::units::wow_to_bevy(a.centre)))
-        .filter(|(a, at)| flat(*at) > (a.radius * 0.5).max(REVEAL_MIN_DIST))
-        .min_by(|a, b| flat(a.1).total_cmp(&flat(b.1)))
-        .map(|(a, at)| (a.name.as_str(), at))
+/// The row a recipe with no `[[tiers]]` gets: just the start.
+fn default_specs() -> Vec<super::design::TierSpec> {
+    vec![super::design::TierSpec {
+        name: "Tiny things".into(),
+        at: 0.0,
+        reps: Vec::new(),
+    }]
 }
 
 /// An NPC with at least this maximum axis counts as an adult (kids measure 1.16-1.29, adults
@@ -135,28 +90,51 @@ pub(crate) fn edible_diameter(axis: f32) -> f32 {
     2.0 * radius
 }
 
-/// The tier table for these representative axes (`None`: not known yet, keep the default row).
-/// Diameters never decrease down the table.
-pub(crate) fn derive_tiers(axis_of: impl Fn(Rep) -> Option<f32>) -> Vec<TierRow> {
-    let mut rows: Vec<TierRow> = Vec::with_capacity(TIERS.len());
-    for (&(default, name), reps) in TIERS.iter().zip(TIER_REPS) {
+/// The tier table for these specs and representative axes (`None`: not known yet, keep the
+/// spec's own diameter). Diameters never decrease down the table.
+pub(super) fn derive_tiers(
+    specs: &[super::design::TierSpec],
+    axis_of: impl Fn(&Rep) -> Option<f32>,
+) -> Vec<TierRow> {
+    let fallback;
+    let specs = if specs.is_empty() {
+        fallback = default_specs();
+        &fallback
+    } else {
+        specs
+    };
+    let mut rows: Vec<TierRow> = Vec::with_capacity(specs.len());
+    for spec in specs {
+        let reps: Vec<Rep> = spec.reps.iter().filter_map(|r| Rep::parse(r)).collect();
         let known: Vec<(Rep, f32)> = reps
             .iter()
-            .filter_map(|&r| axis_of(r).map(|a| (r, a)))
+            .filter_map(|r| axis_of(r).map(|a| (r.clone(), a)))
             .collect();
         let at = if known.len() == reps.len() && !known.is_empty() {
             edible_diameter(known.iter().map(|k| k.1).fold(0.0, f32::max))
         } else {
-            default
+            spec.at
         };
-        let at = rows.last().map_or(at, |prev| at.max(prev.at));
+        let at = rows.last().map_or(at, |prev: &TierRow| at.max(prev.at));
         rows.push(TierRow {
             at,
-            name,
+            name: intern(&spec.name),
             reps: known,
         });
     }
     rows
+}
+
+/// The table for a level, given the biggest adult in its cast if that is known.
+pub(super) fn table_for(design: &super::design::Design, adults: Option<f32>) -> Vec<TierRow> {
+    derive_tiers(&design.tiers, |rep| match rep {
+        Rep::Species(name) => design
+            .roster
+            .iter()
+            .find(|s| s.name == *name)
+            .and_then(|s| s.fit),
+        Rep::Adults => adults,
+    })
 }
 
 /// One derived tier.
@@ -168,8 +146,8 @@ pub(crate) struct TierRow {
     pub reps: Vec<(Rep, f32)>,
 }
 
-/// The tier table the running level announces from: [`TIERS`] where nothing better is known, the
-/// roster's and the cast's real sizes where it is.
+/// The tier table the running level announces from: the recipe's diameters where nothing better is
+/// known, the roster's and the cast's real sizes where it is.
 #[derive(Resource)]
 pub(crate) struct TierTable {
     pub rows: Vec<TierRow>,
@@ -178,15 +156,10 @@ pub(crate) struct TierTable {
 impl Default for TierTable {
     fn default() -> Self {
         Self {
-            rows: derive_tiers(|_| None),
+            rows: derive_tiers(&[], |_| None),
         }
     }
 }
-
-/// Hogger's full stand-box maximum axis, yards: the ball must be able to
-/// roll him up, so its radius has to reach `HOGGER_SIZE / COLLECT_RATIO`. "Hogger, enlarged by the
-/// device's backwash."
-pub(crate) const HOGGER_SIZE: f32 = 4.0;
 
 // ---------------------------------------------------------------------------------------------
 // The creature roster
@@ -230,7 +203,7 @@ pub(crate) struct Species {
     /// A multiplier on the display's own DBC scale (1.0 = as the game draws it).
     pub scale: f32,
     /// When set, the scale is chosen so the collection size is exactly this many yards, whatever
-    /// the model: how Hogger is enlarged.
+    /// the model: how a level's boss is enlarged.
     pub fit: Option<f32>,
     pub place: Place,
     pub behavior: Behavior,
@@ -261,10 +234,9 @@ struct Tiers {
 
 impl Default for Tiers {
     fn default() -> Self {
-        let n = tiers_reached(&TierTable::default().rows, 2.0 * START_RADIUS);
         Self {
-            announced: n,
-            current: n,
+            announced: 1,
+            current: 1,
         }
     }
 }
@@ -292,20 +264,30 @@ pub(super) fn plugin(app: &mut App) {
     app.init_resource::<GrowthSteps>()
         .init_resource::<Tiers>()
         .init_resource::<TierTable>()
-        .add_systems(OnEnter(Phase::Ready), reset_tiers)
+        .add_systems(
+            OnEnter(Phase::Ready),
+            reset_tiers.after(super::design::reload),
+        )
         .add_systems(Update, (keys, begin, tick_banner, refresh_tiers))
         .add_systems(
             Update,
-            (tick, announce, growth_beats)
+            (tick, stars, announce, growth_beats)
                 .chain()
                 .after(WorldStage::Input)
                 .run_if(playing),
         );
 }
 
-fn reset_tiers(mut tiers: ResMut<Tiers>, table: Res<TierTable>, mut growth: ResMut<GrowthSteps>) {
+fn reset_tiers(
+    mut tiers: ResMut<Tiers>,
+    mut table: ResMut<TierTable>,
+    design: Res<super::design::Design>,
+    mut growth: ResMut<GrowthSteps>,
+) {
     *growth = GrowthSteps::default();
-    let n = tiers_reached(&table.rows, 2.0 * START_RADIUS);
+    // This level's table, without its cast (refresh_tiers adds the adults once they spawn).
+    table.rows = table_for(&design, None);
+    let n = tiers_reached(&table.rows, 2.0 * design.start_radius);
     *tiers = Tiers {
         announced: n,
         current: n,
@@ -343,7 +325,7 @@ fn growth_beats(
 }
 
 /// Re-derive [`TierTable`] from the roster's fits and the spawned cast whenever either changes,
-/// and say where it disagrees with the [`TIERS`] defaults.
+/// and say where it disagrees with the recipe's own diameters.
 fn refresh_tiers(
     design: Res<super::design::Design>,
     cast: Query<&Collectible, With<super::npcs::Npc>>,
@@ -358,44 +340,63 @@ fn refresh_tiers(
         .map(|c| c.pickup)
         .filter(|a| *a >= ADULT_MIN_AXIS)
         .fold(None, |m: Option<f32>, a| Some(m.map_or(a, |m| m.max(a))));
-    let rows = derive_tiers(|rep| match rep {
-        Rep::Species(name) => design
-            .roster
-            .iter()
-            .find(|s| s.name == name)
-            .and_then(|s| s.fit),
-        Rep::Adults => adults,
-    });
-    for (row, &(default, _)) in rows.iter().zip(TIERS) {
-        if (row.at - default).abs() > 0.05 {
+    let rows = table_for(&design, adults);
+    for (row, spec) in rows.iter().zip(&design.tiers) {
+        if (row.at - spec.at).abs() > 0.05 {
             warn!(
-                "azeroll: tier {:?} derives to {:.2} yd, the TIERS default says {default:.2}",
-                row.name, row.at
+                "azeroll: tier {:?} derives to {:.2} yd, the recipe says {:.2}",
+                row.name, row.at, spec.at
             );
         }
     }
     table.rows = rows;
 }
 
-/// Esc pauses and resumes; R restarts from play or pause; Enter or R leaves the results; F starts
-/// the untimed Free Roll from the results after a win, or from the title once Hogger has been
-/// rolled up before.
+/// How long Enter is held to call a size-goal run (the clock's rim fills over it), real seconds.
+pub(super) const CALL_HOLD: f32 = 1.0;
+/// The rim drains this much faster than it fills when the key is let go.
+const CALL_DRAIN: f32 = 3.0;
+
+/// `WOW_AZEROLL_CALL_AT=<play secs>` (a capture and test aid): hold the finish key from that play
+/// time on, as a player would.
+fn call_at() -> Option<f32> {
+    crate::webenv::var("WOW_AZEROLL_CALL_AT")?.parse().ok()
+}
+
+/// Esc pauses and resumes; R restarts from play, pause or the results; L leaves a paused run for
+/// the level select; F starts the untimed Free Roll from the title once the level has been won
+/// before. Holding Enter after a size goal is met calls the run. (The results' keys are
+/// [`super::ritual`]'s, the hub's [`super::select`]'s.)
+#[allow(clippy::too_many_arguments)]
 fn keys(
     keys: Res<ButtonInput<KeyCode>>,
+    real: Res<Time<Real>>,
     phase: Res<State<Phase>>,
     loading: Res<LoadingScreen>,
-    run: Res<Run>,
+    design: Res<super::design::Design>,
+    mut run: ResMut<Run>,
     progress: Res<Progress>,
+    current: Res<super::campaign::CurrentLevel>,
+    mut select: ResMut<super::campaign::SelectState>,
     mut flow: ResMut<Flow>,
     mut next: ResMut<NextState<Phase>>,
+    mut held: Local<f32>,
 ) {
     let restart = keys.just_pressed(KeyCode::KeyR);
     let escape = keys.just_pressed(KeyCode::Escape);
     let free = keys.just_pressed(KeyCode::KeyF);
+    if *phase.get() != Phase::Playing {
+        *held = 0.0;
+        flow.call_hold = 0.0;
+    }
     match phase.get() {
+        Phase::Select | Phase::Results => {}
         Phase::Ready => {
-            if free && !loading.covering() && progress.best().wins > 0 {
-                progress::start_free_roll(&mut flow, &mut next);
+            if (free || select.free_pending) && !loading.covering() {
+                select.free_pending = false;
+                if progress.wins(current.id()) > 0 {
+                    progress::start_free_roll(&mut flow, &mut next);
+                }
             }
         }
         Phase::Playing => {
@@ -404,19 +405,36 @@ fn keys(
             } else if escape {
                 next.set(Phase::Paused);
             }
+            // Calling it: only after the goal of a size level, never in Free Roll.
+            let callable = run.won
+                && !flow.free_roll
+                && flow.finale.is_none()
+                && design.goal.kind == super::design::GoalKind::Size;
+            let down =
+                keys.pressed(KeyCode::Enter) || call_at().is_some_and(|at| run.elapsed >= at);
+            let dt = real.delta_secs().min(0.1);
+            if callable && down {
+                *held += dt;
+            } else {
+                *held = (*held - dt * CALL_DRAIN).max(0.0);
+            }
+            flow.call_hold = (*held / CALL_HOLD).clamp(0.0, 1.0);
+            if callable && *held >= CALL_HOLD {
+                *held = 0.0;
+                flow.call_hold = 0.0;
+                flow.ending = Some(Ending::Called);
+                run.called = true;
+                info!("azeroll: the run was called at {:.1}s", run.elapsed);
+                next.set(Phase::Results);
+            }
         }
         Phase::Paused => {
             if restart {
                 next.set(Phase::Ready);
+            } else if keys.just_pressed(KeyCode::KeyL) {
+                next.set(Phase::Select);
             } else if escape {
                 next.set(Phase::Playing);
-            }
-        }
-        Phase::Results => {
-            if restart || keys.just_pressed(KeyCode::Enter) {
-                next.set(Phase::Ready);
-            } else if free && run.won {
-                progress::start_free_roll(&mut flow, &mut next);
             }
         }
     }
@@ -427,9 +445,10 @@ fn begin(
     keys: Res<ButtonInput<KeyCode>>,
     phase: Res<State<Phase>>,
     loading: Res<LoadingScreen>,
+    ball: Res<BallState>,
     mut next: ResMut<NextState<Phase>>,
 ) {
-    if *phase.get() != Phase::Ready || loading.covering() {
+    if *phase.get() != Phase::Ready || loading.covering() || !ball.floor_ready {
         return;
     }
     if keys.any_just_pressed([
@@ -447,43 +466,144 @@ fn begin(
     }
 }
 
-/// The clock, and the two ways a run ends: Hogger rolled up (after the celebration) or the time
-/// limit. The clock stops at the win, so the celebration costs nothing. Free Roll has no clock and
-/// no end: rolling up Hogger in it only earns the banner.
-fn tick(
+/// Seconds of play before a size goal can be met: a debug start above the goal must not end the
+/// run in Ready's first frame.
+const GOAL_AFTER: f32 = 0.5;
+/// The goal beat's banner.
+const GOAL_BANNER_SECS: f32 = 2.0;
+
+/// The clock, and the ways a run ends. A single-target goal (a named creature, the Cathedral) ends
+/// on capture, after its pre-roll; a size goal is only a beat (the dial, the banner, Fizzwick): the
+/// run goes on to the candle or to the player calling it, and the final size is what is graded.
+/// The clock stops at the capture of a single-target goal and at the candle, never at a size goal.
+/// Free Roll has no clock and no end: meeting the goal in it only earns the banner.
+pub(super) fn tick(
     time: Res<Time>,
     real: Res<Time<Real>>,
     design: Res<super::design::Design>,
+    ball: Res<BallState>,
     mut run: ResMut<Run>,
     mut flow: ResMut<Flow>,
+    finale: Res<super::finale::Finale>,
     mut collected: MessageReader<Collected>,
     mut next: ResMut<NextState<Phase>>,
     mut sounds: MessageWriter<GlueSound>,
+    mut reached: MessageWriter<GoalReached>,
+    mut cues: MessageWriter<Cue>,
 ) {
-    if !run.won && !flow.free_roll {
+    use super::design::GoalKind;
+    if flow.free_roll
+        && design
+            .live_radius_limit
+            .is_some_and(|limit| ball.radius >= limit)
+    {
+        next.set(Phase::Results);
+        return;
+    }
+    let size_goal = design.goal.kind == GoalKind::Size;
+    if !flow.free_roll && (!run.won || size_goal) {
         run.elapsed += time.delta_secs();
     }
-    for c in collected.read() {
-        if c.kind == Kind::Boss && !run.won {
-            run.won = true;
-            if flow.free_roll {
-                run.banner = Some(("HOGGER, ROLLED UP!".to_string(), 4.0));
-            } else {
-                run.banner = None;
-                flow.finale = Some(0.0);
-                sounds.write(GlueSound(progress::FANFARE_SOUND));
-            }
+    // The goal's own target: Hogger can be a Boss without being the goal (Market Day).
+    let boss = collected
+        .read()
+        .any(|c| c.kind == Kind::Boss && c.name == design.goal.target.as_str());
+    let settled = flow.free_roll || run.elapsed > GOAL_AFTER;
+    if !run.won
+        && settled
+        && (goal_met(&design.goal, boss, ball.diameter())
+            || (design.goal.kind == GoalKind::Finale && finale.triggered))
+    {
+        run.won = true;
+        if flow.free_roll {
+            run.banner = Some((design.win_title().to_uppercase(), 4.0));
+            reached.write(GoalReached {
+                diameter: ball.diameter(),
+                goal: design.goal_diameter(),
+            });
+        } else if size_goal {
+            run.goal_time = Some(run.elapsed);
+            run.stars = 1;
+            run.banner = Some((design.win_title().to_uppercase(), GOAL_BANNER_SECS));
+            cues.write(Cue::GoalFanfare);
+            reached.write(GoalReached {
+                diameter: ball.diameter(),
+                goal: design.goal_diameter(),
+            });
+            info!(
+                "azeroll: goal reached at {:.1}s, D={:.2} (goal {:.2}); rolling on to the candle",
+                run.elapsed,
+                ball.diameter(),
+                design.goal_diameter()
+            );
+        } else {
+            run.banner = None;
+            run.goal_time = Some(run.elapsed);
+            flow.finale = Some(0.0);
+            flow.finale_len = match design.goal.kind {
+                GoalKind::Finale => progress::FINALE_SECS,
+                _ => progress::COLLECT_FINALE_SECS,
+            };
+            sounds.write(GlueSound(progress::FANFARE_SOUND));
+            reached.write(GoalReached {
+                diameter: ball.diameter(),
+                goal: design.goal_diameter(),
+            });
         }
     }
     if let Some(t) = flow.finale.as_mut() {
         *t += real.delta_secs();
-        if *t >= progress::FINALE_SECS {
+        if *t >= flow.finale_len {
             flow.finale = None;
+            flow.ending = Some(Ending::Captured);
             next.set(Phase::Results);
         }
-    } else if !flow.free_roll && !run.won && run.elapsed >= design.time_limit {
+    } else if !flow.free_roll && run.elapsed >= design.time_limit {
         run.elapsed = design.time_limit;
+        flow.ending = Some(if run.won {
+            Ending::Snuff
+        } else {
+            Ending::Failed
+        });
         next.set(Phase::Results);
+    }
+}
+
+/// The dial's stars: one at the goal, one more at each of the level's grade boundaries (1.2x, 1.5x
+/// and 2x the goal by default). A star once lit stays lit, however the ball sheds afterwards.
+fn stars(
+    design: Res<super::design::Design>,
+    ball: Res<BallState>,
+    flow: Res<Flow>,
+    mut run: ResMut<Run>,
+    mut earned: MessageWriter<StarEarned>,
+) {
+    if flow.free_roll || !run.won || design.goal.kind != super::design::GoalKind::Size {
+        return;
+    }
+    let bounds = design.level.grades.unwrap_or(progress::DEFAULT_SIZE_GRADES);
+    let now = stars_for(ball.diameter(), design.goal_diameter(), bounds);
+    if now > run.stars {
+        run.stars = now;
+        earned.write(StarEarned { n: now });
+    }
+}
+
+/// Stars lit by a ball this big: one at the goal, plus one per grade boundary reached.
+pub(super) fn stars_for(diameter: f32, goal: f32, bounds: [f32; 3]) -> u8 {
+    if goal <= 0.0 || diameter < goal {
+        return 0;
+    }
+    1 + bounds.iter().filter(|&&b| diameter >= b * goal).count() as u8
+}
+
+/// Whether a level's goal is met: its boss was rolled up this frame (`boss`), or the ball is at
+/// least the goal diameter across.
+pub(super) fn goal_met(goal: &super::design::Goal, boss: bool, diameter: f32) -> bool {
+    match goal.kind {
+        super::design::GoalKind::Collect => boss,
+        super::design::GoalKind::Size => diameter >= goal.diameter,
+        super::design::GoalKind::Finale => false,
     }
 }
 
@@ -500,6 +620,7 @@ fn advance_tiers(tiers: &mut Tiers, rows: &[TierRow], diameter: f32) -> std::ops
 /// that made it true next to the real contact state.
 fn announce(
     ball: Res<BallState>,
+    flow: Res<Flow>,
     table: Res<TierTable>,
     mut tiers: ResMut<Tiers>,
     mut run: ResMut<Run>,
@@ -517,9 +638,9 @@ fn announce(
             });
         }
         let row = &table.rows[tiers.current - 1];
-        // Two decimals, rounded up: the banner must not name a size the ball is still short of.
-        let shown = (row.at * 100.0).ceil() / 100.0;
-        run.banner = Some((format!("{}  ·  {shown:.2} yd", row.name), 3.5));
+        if flow.finale.is_none() {
+            run.banner = Some((row.name.to_string(), 2.6));
+        }
         let reps: Vec<String> = row
             .reps
             .iter()
@@ -559,37 +680,35 @@ fn tick_banner(time: Res<Time>, mut run: ResMut<Run>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde::Deserialize;
-
-    #[derive(Deserialize)]
-    struct Recipe {
-        herds: Vec<Herd>,
-        areas: Vec<AreaName>,
-    }
-    #[derive(Deserialize)]
-    struct AreaName {
-        name: String,
-    }
-    #[derive(Deserialize)]
-    struct Herd {
-        species: String,
-        fit: f32,
-    }
+    use crate::azeroll::campaign::LEVELS;
+    use crate::azeroll::design::{self, Design, Goal, GoalKind};
 
     /// The adult NPC axis the shipped cast measures at (`azeroll NPC: ... axis=` in the log).
     const ADULT_AXIS: f32 = 2.01;
 
-    fn shipped() -> Vec<TierRow> {
-        let recipe: Recipe = toml::from_str(include_str!("goldshire.toml")).unwrap();
-        derive_tiers(|rep| match rep {
-            Rep::Species(name) => recipe
-                .herds
-                .iter()
-                .find(|h| h.species == name)
-                .map(|h| h.fit),
-            Rep::Adults => Some(ADULT_AXIS),
-        })
+    fn recipe(id: &str) -> Design {
+        let entry = LEVELS.iter().find(|l| l.id == id).unwrap();
+        design::parse(entry.recipe).unwrap()
     }
+
+    fn market() -> Design {
+        recipe("market-day")
+    }
+
+    fn shipped() -> Vec<TierRow> {
+        table_for(&market(), Some(ADULT_AXIS))
+    }
+
+    /// The tier diameters Market Day announces (Hogger's, then the Prize Pumpkin's).
+    const MARKET_TIERS: &[(f32, &str)] = &[
+        (0.0, "Crumbs and coppers"),
+        (1.04, "Critters"),
+        (2.58, "Livestock"),
+        (4.33, "Shoppers and horses"),
+        (6.02, "Raiders at the gate"),
+        (8.6, "Hogger"),
+        (12.03, "The Prize Pumpkin"),
+    ];
 
     #[test]
     fn edible_diameter_is_the_first_roll_up() {
@@ -606,31 +725,41 @@ mod tests {
     }
 
     #[test]
-    fn default_table_matches_the_shipped_recipe() {
+    fn market_day_derives_the_tiers_it_always_had() {
         let derived = shipped();
-        assert_eq!(derived.len(), TIERS.len());
-        assert_eq!(TIER_REPS.len(), TIERS.len());
-        for (row, &(default, name)) in derived.iter().zip(TIERS) {
+        let design = market();
+        assert_eq!(derived.len(), MARKET_TIERS.len());
+        assert_eq!(design.tiers.len(), MARKET_TIERS.len());
+        for ((row, spec), &(default, name)) in derived.iter().zip(&design.tiers).zip(MARKET_TIERS) {
             assert_eq!(row.name, name);
+            assert_eq!(spec.name, name);
+            assert!(
+                (spec.at - default).abs() < 1e-3,
+                "{name}: recipe {}",
+                spec.at
+            );
             assert!(
                 (row.at - default).abs() < 0.02,
                 "{name}: derived {} default {default}",
                 row.at
             );
         }
-        // Hogger's tier is Hogger's own roll-up size.
-        assert_eq!(
-            contact(derived.last().unwrap().at / 2.0, HOGGER_SIZE),
-            Contact::RollUp
-        );
+        // Authored tier labels are rounded hundredths; the goal's actual contact gate is
+        // derived from the full geometry axis, so a rounded tier may be just below RollUp.
+        assert!((derived.last().unwrap().at - design.goal_diameter()).abs() < 0.02);
+        assert!((design.goal_diameter() - 12.023).abs() < 0.01);
     }
 
     #[test]
     fn every_tier_names_only_edible_things_and_none_earlier_than_it_can() {
         for row in shipped().iter().skip(1) {
+            // A tier with no representatives (the Prize Pumpkin's) is a plain diameter.
+            if row.reps.is_empty() {
+                continue;
+            }
             let radius = row.at / 2.0;
             let mut hardest = 0.0_f32;
-            for &(rep, axis) in &row.reps {
+            for &(ref rep, axis) in &row.reps {
                 assert_eq!(
                     contact(radius, axis),
                     Contact::RollUp,
@@ -650,20 +779,65 @@ mod tests {
     }
 
     #[test]
-    fn tiers_ascend_and_unknown_axes_keep_defaults() {
-        let table = derive_tiers(|_| None);
-        for (row, &(default, _)) in table.iter().zip(TIERS) {
-            assert_eq!(row.at, default);
+    fn every_level_has_an_ascending_table_starting_at_zero() {
+        for entry in LEVELS {
+            let d = design::parse(entry.recipe).unwrap();
+            let rows = table_for(&d, Some(ADULT_AXIS));
+            assert!(!rows.is_empty(), "{}", entry.id);
+            assert_eq!(rows[0].at, 0.0, "{}: the first tier is the start", entry.id);
+            assert!(
+                rows.windows(2).all(|w| w[0].at <= w[1].at),
+                "{}: tiers must ascend",
+                entry.id
+            );
+            // The start is inside the first tier only: nothing is announced at the start.
+            assert_eq!(
+                tiers_reached(&rows, 2.0 * d.start_radius),
+                1,
+                "{}",
+                entry.id
+            );
+            // And the goal is at or beyond the last tier.
+            assert!(
+                d.goal_diameter() >= rows.last().unwrap().at - 0.02,
+                "{}: goal {} before the last tier {}",
+                entry.id,
+                d.goal_diameter(),
+                rows.last().unwrap().at
+            );
         }
-        assert!(TIERS.windows(2).all(|w| w[0].0 < w[1].0));
+    }
+
+    #[test]
+    fn tiers_ascend_and_unknown_axes_keep_defaults() {
+        let design = market();
+        let table = derive_tiers(&design.tiers, |_| None);
+        for (row, spec) in table.iter().zip(&design.tiers) {
+            assert_eq!(row.at, spec.at);
+        }
         // A species that comes out bigger than the next tier pushes it along.
-        let pushed = derive_tiers(|rep| (rep == Rep::Species("Cow")).then_some(5.0));
+        let pushed = derive_tiers(&design.tiers, |rep| {
+            (*rep == Rep::Species("Cow".into())).then_some(5.0)
+        });
         assert!(pushed.windows(2).all(|w| w[0].at <= w[1].at));
+        // A recipe with no tiers still has its start row.
+        assert_eq!(derive_tiers(&[], |_| None).len(), 1);
+    }
+
+    #[test]
+    fn reps_parse_as_the_recipe_writes_them() {
+        assert_eq!(Rep::parse("adults"), Some(Rep::Adults));
+        assert_eq!(
+            Rep::parse("species:Farm horse"),
+            Some(Rep::Species("Farm horse".into()))
+        );
+        assert_eq!(Rep::parse("species:"), None);
+        assert_eq!(Rep::parse("mystery"), None);
     }
 
     #[test]
     fn tiers_are_held_through_a_shed() {
-        let rows = derive_tiers(|_| None);
+        let rows = derive_tiers(&market().tiers, |_| None);
         let at = rows[3].at;
         assert_eq!(tiers_reached(&rows, at), 4);
         assert_eq!(tiers_reached(&rows, at * 0.99), 3);
@@ -676,7 +850,7 @@ mod tests {
 
     #[test]
     fn beats_fire_once_through_a_shed_and_regrow() {
-        let rows = derive_tiers(|_| None);
+        let rows = derive_tiers(&market().tiers, |_| None);
         let mut tiers = Tiers {
             announced: 1,
             current: 1,
@@ -700,38 +874,63 @@ mod tests {
         assert_eq!(new_growth_step(&mut steps, base, 1.3), Some(4));
     }
 
-    fn recipe_design() -> super::super::design::Design {
-        toml::from_str(include_str!("goldshire.toml")).unwrap()
+    #[test]
+    fn goals_are_met_by_their_own_kind() {
+        let collect = Goal {
+            kind: GoalKind::Collect,
+            target: "Hogger".into(),
+            diameter: 0.0,
+            city_pieces: 0,
+            axis: 0.0,
+            area: None,
+            title: None,
+            fail: None,
+        };
+        // Rolling up the boss wins a creature goal at any size; size alone never does.
+        assert!(goal_met(&collect, true, 1.0));
+        assert!(!goal_met(&collect, false, 50.0));
+        let size = Goal {
+            kind: GoalKind::Size,
+            target: String::new(),
+            diameter: 1.5,
+            ..collect.clone()
+        };
+        // A size goal is met at the diameter, boss or no boss, and not a hair before.
+        assert!(goal_met(&size, false, 1.5));
+        assert!(goal_met(&size, false, 2.0));
+        assert!(!goal_met(&size, false, 1.499));
+        assert!(!goal_met(&size, true, 1.0), "a size goal has no boss");
     }
 
     #[test]
-    fn reveal_names_exist_in_the_recipe() {
-        let recipe: Recipe = toml::from_str(include_str!("goldshire.toml")).unwrap();
-        assert_eq!(TIER_REVEALS.len(), TIERS.len());
-        assert!(TIER_REVEALS[0].is_empty());
-        for (tier, names) in TIER_REVEALS.iter().enumerate().skip(1) {
-            assert!(!names.is_empty(), "tier {tier}");
-            for name in *names {
-                assert!(
-                    recipe.areas.iter().any(|a| a.name == *name),
-                    "tier {tier}: no area {name:?}"
-                );
-            }
-        }
+    fn stars_are_one_at_the_goal_and_one_per_grade_boundary() {
+        let b = progress::DEFAULT_SIZE_GRADES;
+        assert_eq!(stars_for(1.99, 2.0, b), 0);
+        assert_eq!(stars_for(2.0, 2.0, b), 1);
+        assert_eq!(stars_for(2.39, 2.0, b), 1);
+        assert_eq!(stars_for(2.4, 2.0, b), 2);
+        assert_eq!(stars_for(3.0, 2.0, b), 3);
+        assert_eq!(stars_for(4.0, 2.0, b), 4);
+        assert_eq!(stars_for(40.0, 2.0, b), 4);
+        assert_eq!(stars_for(5.0, 0.0, b), 0);
     }
 
     #[test]
-    fn reveals_look_ahead_from_where_the_ball_is() {
-        let design = recipe_design();
-        let at = |p: [f32; 3]| super::super::units::wow_to_bevy(p);
-        // The inn yard looks to the market; the market's own tier looks on to the smithy.
-        let (name, _) = reveal_target(&design, 1, at(design.start)).unwrap();
-        assert_eq!(name, "Market");
-        let (name, _) = reveal_target(&design, 2, at([-9497.0, 83.0, 57.0])).unwrap();
-        assert_ne!(name, "Market");
-        // Standing in the camp, the last tier has nowhere further to look.
-        assert!(reveal_target(&design, 5, at(design.camp)).is_none());
-        // Tier 0 never glances.
-        assert!(reveal_target(&design, 0, at(design.start)).is_none());
+    fn the_shipped_size_level_keeps_rolling_and_the_others_end_on_capture() {
+        use crate::azeroll::design::GoalKind;
+        let kinds: Vec<GoalKind> = LEVELS
+            .iter()
+            .map(|l| design::parse(l.recipe).unwrap().goal.kind)
+            .collect();
+        assert_eq!(kinds[0], GoalKind::Size, "L1 is the size level");
+        assert_ne!(kinds[1], GoalKind::Size);
+        assert_eq!(kinds[2], GoalKind::Finale);
+    }
+
+    #[test]
+    fn interned_names_are_stable() {
+        let a = intern("Some tier");
+        let b = intern("Some tier");
+        assert!(std::ptr::eq(a, b), "the same name must not leak twice");
     }
 }

@@ -209,6 +209,23 @@ impl WorldCollision<'_, '_> {
         one_sided::cast_ray(&self.ms, origin, dir, max_distance, &Self::body_filter())
     }
 
+    /// Support validation for a removable structure: query the remaining static world.
+    pub fn ray_body_excluding(
+        &self,
+        origin: Vec3,
+        dir: Dir3,
+        max_distance: f32,
+        entities: &[bevy::prelude::Entity],
+    ) -> Option<RayHitData> {
+        one_sided::cast_ray(
+            &self.ms,
+            origin,
+            dir,
+            max_distance,
+            &Self::body_filter().with_excluded_entities(entities.iter().copied()),
+        )
+    }
+
     /// Move `shape` by `velocity` for `delta_time`, sliding along what it hits.
     pub fn slide_body(
         &self,

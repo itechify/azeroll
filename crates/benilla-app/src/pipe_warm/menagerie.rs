@@ -47,6 +47,8 @@ pub(super) struct WarmLanes<'w> {
     ui_quads: ResMut<'w, Assets<crate::ui_pass::UiQuadMaterial>>,
     /// The in-run HUD material, registered by Azeroll's plugin: `None` outside that mode.
     hud: Option<ResMut<'w, Assets<HudMaterial>>>,
+    /// The level-select hub's art material (globe, map inset, medals), Azeroll only.
+    art: Option<ResMut<'w, Assets<crate::azeroll::select::hub::ArtMaterial>>>,
 }
 
 /// A portrait booth camera and its layer. Booths run `Msaa::Off`, so each model pipeline has a
@@ -549,6 +551,14 @@ pub(super) fn spawn_menagerie(
             p: Vec4::ZERO,
             tex: ui_tex.clone(),
         });
+        spawn_ui_lane_rig(commands, mat, &mut count);
+    }
+    if let Some(art) = lanes.art.as_mut() {
+        let mat = art.add(crate::azeroll::select::hub::ArtMaterial::new(
+            0.0,
+            Vec4::ZERO,
+            &ui_tex,
+        ));
         spawn_ui_lane_rig(commands, mat, &mut count);
     }
 

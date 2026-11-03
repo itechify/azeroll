@@ -135,6 +135,7 @@ fn spawn_exile(commands: &mut Commands, f: &GxFader, alpha: f32, admitted: bool)
 /// camera's own building exempt from the gate. A re-admitted exile despawns and clears its kill
 /// bit in the same frame.
 pub(super) fn cull_cells(
+    parts: Option<Res<crate::terrain_stream::WmoPartitions>>,
     mut commands: Commands,
     mut gx: ResMut<StaticGx>,
     debug: Res<crate::dev_state::DebugState>,
@@ -371,7 +372,9 @@ pub(super) fn cull_cells(
                         .copied()
                         .unwrap_or(false)
                 });
-                if m.portal_cull && !set_admitted(&inst.visible, rooms) {
+                if parts.as_ref().is_some_and(|p| p.hidden(entity, rooms))
+                    || (m.portal_cull && !set_admitted(&inst.visible, rooms))
+                {
                     continue;
                 }
                 let center = draw.origin + Vec3::from(aabb.center);
@@ -427,6 +430,9 @@ pub(super) fn cull_cells(
                     .copied()
                     .unwrap_or(false);
                 // The portal PVS bit, fail-open like `WmoGroupVis::drawn_by`.
+                if parts.as_ref().is_some_and(|p| p.hidden(entity, &[*group])) {
+                    continue;
+                }
                 if m.portal_cull
                     && !inst
                         .visible

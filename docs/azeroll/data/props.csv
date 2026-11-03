@@ -1549,3 +1549,4 @@ World\Generic\Human\Passive Doodads\OilRigStacks\OilRigStack01.m2,Oil Rig Stack 
 World\Azeroth\Elwynn\Buildings\StormwindEntrance\StormwindGate.m2,Stormwind Gate,table,World\Azeroth\Elwynn\Buildings\StormwindEntrance,83.18,131.72,157.19,53.11,65.86,0.0,false,massive,fences and walls
 World\Generic\PassiveDoodads\Waterfalls\DamWaterfall01.m2,Dam Waterfall,table,World\Generic\PassiveDoodads\Waterfalls,86.59,59.05,8.88,162.68,29.53,0.0,false,massive,other
 World\Azeroth\Duskwood\PassiveDoodads\Trees\NewDuskwoodTreeHuge.m2,New Duskwood Tree Huge,camel,World\Azeroth\Duskwood\PassiveDoodads\Trees,99.73,164.37,163.32,75.89,81.66,26.58,true,massive,plants and trees
+World\Generic\PassiveDoodads\Christmas\XmasGift02.m2,Gift 02,camel,World\Generic\PassiveDoodads\Christmas,0.5,0.84,0.84,0.88,0.84,0.0,false,small,other

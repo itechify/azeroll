@@ -691,7 +691,10 @@ pub(crate) mod schedule_tests {
     /// Raising the ceiling is a claim that a new undeclared order is acceptable: make it with the
     /// reason read off the dump, or declare the order (`.after`, a set, a `chain`). A resource
     /// that commutes by construction belongs in [`Classes`].
-    const UPDATE_ACTIONABLE_CEILING: usize = 4_980;
+    ///
+    /// 4,980 → 4,993 (2026-11-03): the Azeroll campaign's hub, city-partition and climbing
+    /// systems; all are gated by Azeroll's own phase/run conditions and touch only mode state.
+    const UPDATE_ACTIONABLE_CEILING: usize = 4_993;
     const UPDATE_ACTIONABLE_SLACK: usize = 40;
 
     fn ratchet(what: &str, n: usize, ceiling: usize, slack: usize) {

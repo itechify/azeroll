@@ -197,7 +197,7 @@ const GROWTH_CHIME: Kit = Kit(3201, "igBonusBarOpen");
 const TIER_FLOURISH: Kit = Kit(1519, "TaxiNodeDiscovered");
 /// The dash launch: a warrior's special swing, five whooshes of 0.6 to 0.9 s.
 const DASH_LAUNCH: Kit = Kit(3091, "SwingWeaponSpecialWarrior");
-/// The dash wind-up, for when the ball has one (`Dash::WindUp` is reserved and not sent today).
+/// The dash wind-up: sent once when a held dash input passes a tap (`pad::DashCharge`).
 const DASH_WINDUP: Kit = Kit(5674, "Whirlwind600%");
 /// The dash is ready again: a short, clean tick (0.14 s).
 const DASH_READY: Kit = Kit(1115, "UChatScrollButton");
@@ -226,7 +226,7 @@ impl Ground {
     }
 }
 
-/// The size bands of the roll, by ball diameter: the tiers of `level::TIERS` where the world
+/// The size bands of the roll, by ball diameter: the tiers of the recipe's tiers where the world
 /// changes scale (critters, NPCs and horses, Hogger), so the sound steps up with the HUD's tiers.
 const ROLL_BANDS: [f32; 3] = [1.04, 4.33, 8.6];
 
@@ -585,6 +585,8 @@ enum Cue {
     DashWindUp,
     DashStart,
     DashReady,
+    /// A parcel or a cousin found (D33): the discovery sting at full level, whichever.
+    Found(&'static str),
 }
 
 /// What the run has sounded, for the summary line.
@@ -673,6 +675,8 @@ pub(super) fn plugin(app: &mut App) {
         .init_resource::<Mix>()
         .add_systems(OnEnter(Phase::Ready), reset)
         .add_systems(OnEnter(Phase::Results), summary)
+        .init_resource::<GnomeVoices>()
+        .add_systems(Update, (ritual_sounds, fizz_voice).after(load_voices))
         .add_systems(
             Update,
             (
@@ -688,6 +692,132 @@ pub(super) fn plugin(app: &mut App) {
                 .chain(),
         );
 }
+
+/// The ritual's sounds (the goal beat, the candle, the beam, the results): kit names from
+/// `SoundEntries`, flat. The goal beat's fanfare is placed on the listener's ray where its rolloff
+/// gives about half its level, so it reads as "the goal, keep going" and not as the end.
+fn ritual_sounds(
+    mut cues: MessageReader<super::ritual::Cue>,
+    mut glue: MessageWriter<crate::sound::GlueSound>,
+    voices: Res<Voices>,
+    listener: Res<AudioListener>,
+    mut sink: Sink,
+) {
+    use super::ritual::Cue;
+    for cue in cues.read() {
+        let name = match cue {
+            Cue::Bell => "BellTollAlliance",
+            Cue::Tick => "UChatScrollButton",
+            Cue::Land => RITUAL_LAND,
+            Cue::Whoosh => "SwingWeaponSpecialWarrior",
+            Cue::Apex => "TaxiNodeDiscovered",
+            Cue::StarPop => "LEVELUP",
+            Cue::Thud => "DeathThudSmallWood",
+            Cue::Fanfare => "QUESTCOMPLETED",
+            Cue::Record => "QUESTADDED",
+            Cue::Star => "PickUpRing",
+            Cue::GoalFanfare => {
+                let kits = voices.kits.as_ref();
+                match kits.and_then(|k| k.by_name("QUESTCOMPLETED")) {
+                    Some(k) => {
+                        let at =
+                            emission_point(kits, k.id, listener.pos, listener.pos + Vec3::Y, 0.5);
+                        sink.world(k.id, "QUESTCOMPLETED", at, "the goal beat, at half level");
+                    }
+                    None => {
+                        glue.write(crate::sound::GlueSound("QUESTCOMPLETED"));
+                    }
+                }
+                continue;
+            }
+        };
+        info!("azeroll sfx: ritual {cue:?} -> {name}");
+        glue.write(crate::sound::GlueSound(name));
+    }
+}
+
+/// Fizzwick's emote voices: for each feeling, the text emotes to try (first with a row for a male
+/// gnome wins) and the kit that resolved. Race 7 is Gnome, sex 0 male.
+const GNOME: u32 = 7;
+const FEELINGS: [(super::fizz::Voice, &[&str]); 4] = [
+    (
+        super::fizz::Voice::Cheer,
+        &["CHEER", "CONGRATULATE", "CHARGE"],
+    ),
+    // The gnome-male table has no LAUGH row: "Silly" (JOKE) and the raspberry stand in.
+    (
+        super::fizz::Voice::Laugh,
+        &["LAUGH", "CHUCKLE", "GIGGLE", "JOKE", "RASP"],
+    ),
+    // No GASP row either: "Help me!" and "flee!" are the right kind of alarmed.
+    (
+        super::fizz::Voice::Gasp,
+        &["GASP", "SURPRISED", "OOPS", "HELPME", "FLEE"],
+    ),
+    (super::fizz::Voice::Sigh, &["SIGH", "CRY"]),
+];
+
+#[derive(Resource, Default)]
+struct GnomeVoices {
+    tried: bool,
+    /// Kit ids, in `FEELINGS` order.
+    kits: [Option<u32>; 4],
+}
+
+/// Resolve the gnome's kits for each feeling through the engine's emote catalog.
+fn resolve_gnome(emotes: &crate::sound::EmoteSounds) -> [Option<u32>; 4] {
+    let mut kits = [None; 4];
+    for (i, (voice, names)) in FEELINGS.iter().enumerate() {
+        for name in *names {
+            let Some(text) = emotes.text_id(name) else {
+                info!("azeroll fizz voice: {voice:?}: no emote {name}");
+                continue;
+            };
+            let kit = emotes.0.voice(text, GNOME, 0);
+            let anim = emotes.text_emote(text).and_then(|e| emotes.anim(e));
+            info!("azeroll fizz voice: {voice:?}: {name} -> text {text}, gnome-male kit {kit:?}, anim {anim:?}");
+            if kit.is_some() {
+                kits[i] = kit;
+                break;
+            }
+        }
+        if kits[i].is_none() {
+            info!("azeroll fizz voice: {voice:?} stays silent (a gesture only)");
+        }
+    }
+    kits
+}
+
+/// Play the gnome's voice for each line Fizzwick says. A feeling with no kit is a silent gesture.
+fn fizz_voice(
+    mut says: MessageReader<super::fizz::FizzSays>,
+    emotes: Option<Res<crate::sound::EmoteSounds>>,
+    mut voices: ResMut<GnomeVoices>,
+    mut flat: MessageWriter<ServerSoundMessage>,
+) {
+    if !voices.tried {
+        if let Some(emotes) = &emotes {
+            voices.tried = true;
+            voices.kits = resolve_gnome(emotes);
+        }
+    }
+    for s in says.read() {
+        let kit = FEELINGS
+            .iter()
+            .position(|(v, _)| *v == s.voice)
+            .and_then(|i| voices.kits[i]);
+        if let Some(kit) = kit {
+            flat.write(ServerSoundMessage {
+                kind: ServerSoundKind::Sound2d,
+                sound_id: kit,
+                source: None,
+            });
+        }
+    }
+}
+
+/// The beam landing: an arcane arrival. `LEVELUPSOUND` was reserved for the purpose.
+const RITUAL_LAND: &str = "LEVELUPSOUND";
 
 fn reset(mut mix: ResMut<Mix>) {
     // The ground read and the roll's clocks restart with the run; the stats are logged first.
@@ -1131,8 +1261,16 @@ fn gather_cues(
     mut beats: MessageReader<GrowthBeat>,
     mut tiers: MessageReader<TierReached>,
     mut dashes: MessageReader<Dash>,
+    mut parcels: MessageReader<super::replay::ParcelFound>,
+    mut cousins: MessageReader<super::replay::CousinCaught>,
     mut mix: ResMut<Mix>,
 ) {
+    if parcels.read().count() > 0 {
+        mix.cues.push(Cue::Found("parcel"));
+    }
+    if cousins.read().count() > 0 {
+        mix.cues.push(Cue::Found("cousin"));
+    }
     for b in beats.read() {
         mix.cues.push(Cue::Growth {
             step: b.step,
@@ -1294,6 +1432,7 @@ fn play_cues(
     // A tier arrives with its growth beat when a big jump crosses both: the flourish covers it.
     let tier_now = cues.iter().any(|c| matches!(c, Cue::Tier { .. }));
     for cue in cues {
+        let found = matches!(cue, Cue::Found(_));
         let (kit, secs, hold, why) = match cue {
             Cue::Growth { step, diameter } => (
                 GROWTH_CHIME,
@@ -1314,8 +1453,19 @@ fn play_cues(
             Cue::DashWindUp => (DASH_WINDUP, EST_DASH, HOLD_DASH, "dash wind-up".to_string()),
             Cue::DashStart => (DASH_LAUNCH, EST_DASH, HOLD_DASH, "dash launch".to_string()),
             Cue::DashReady => (DASH_READY, 0.2, 0.0, "dash ready".to_string()),
+            Cue::Found(what) => (
+                TIER_FLOURISH,
+                EST_TIER,
+                HOLD_FLOURISH,
+                format!("found: {what}"),
+            ),
         };
-        let skip = if held {
+        let skip = if found {
+            // A find rings even after a size goal is met (the run keeps rolling); only the finale
+            // and the screens that are not play hold it back.
+            (flow.finale.is_some() || *phase.get() != Phase::Playing)
+                .then_some("finale or not playing")
+        } else if held {
             Some("finale or not playing")
         } else if tier_now && kit.0 == GROWTH_CHIME.0 {
             Some("covered by the tier flourish")
@@ -1432,7 +1582,7 @@ fn roll(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::azeroll::level::{DISLODGE_RATIO, TIERS};
+    use crate::azeroll::level::DISLODGE_RATIO;
 
     fn id(k: Kit) -> u32 {
         k.0
@@ -1440,8 +1590,11 @@ mod tests {
 
     #[test]
     fn roll_bands_are_the_hud_tiers_where_the_world_changes_scale() {
-        // Critters, NPCs and horses, Hogger: rows 1, 3 and 5 of the HUD's tier table.
-        assert_eq!(ROLL_BANDS, [TIERS[1].0, TIERS[3].0, TIERS[5].0]);
+        // Critters, NPCs and horses, Hogger: rows 1, 3 and 5 of Market Day's tier table.
+        let tiers = crate::azeroll::design::parse(include_str!("goldshire.toml"))
+            .unwrap()
+            .tiers;
+        assert_eq!(ROLL_BANDS, [tiers[1].at, tiers[3].at, tiers[5].at]);
         assert_eq!(size_band(0.5), 0);
         assert_eq!(size_band(1.04), 1);
         assert_eq!(size_band(4.0), 1);
@@ -1666,6 +1819,152 @@ mod tests {
                     k.name
                 );
             }
+        }
+    }
+
+    /// A probe, run by hand with `-- --nocapture`: which kits the ritual's cues and Fizzwick's
+    /// voices resolve to in the real data (skipped without an install).
+    #[test]
+    fn ritual_kits_and_gnome_voices_resolve_against_the_game_data() {
+        let Some(data) = benilla_formats::wow_data() else {
+            eprintln!("no WoW install: ritual kits not checked");
+            return;
+        };
+        let Ok(mut chain) = benilla_formats::open_chain(&data) else {
+            return;
+        };
+        let kits = benilla_formats::load_sound_kit_catalog(&mut chain).expect("SoundEntries");
+        for name in [
+            "BellTollAlliance",
+            "UChatScrollButton",
+            RITUAL_LAND,
+            "SwingWeaponSpecialWarrior",
+            "TaxiNodeDiscovered",
+            "LEVELUP",
+            "DeathThudSmallWood",
+            "QUESTCOMPLETED",
+            "QUESTADDED",
+            "PickUpRing",
+        ] {
+            let k = kits.by_name(name);
+            eprintln!("kit {name}: {:?}", k.map(|k| (k.id, k.files.len())));
+            assert!(k.is_some_and(|k| !k.files.is_empty()), "{name} has no file");
+        }
+        let emotes = benilla_formats::load_emote_sound_catalog(&mut chain).expect("emotes");
+        let wrapped = crate::sound::EmoteSounds(emotes);
+        let all = [
+            "CHEER",
+            "CLAP",
+            "APPLAUD",
+            "LAUGH",
+            "GIGGLE",
+            "CHUCKLE",
+            "GASP",
+            "SURPRISED",
+            "OOPS",
+            "SIGH",
+            "CRY",
+            "TALK",
+            "BOW",
+            "CHICKEN",
+            "FLEX",
+            "ROAR",
+            "DANCE",
+            "KISS",
+            "THANK",
+            "SALUTE",
+            "SHY",
+            "BEG",
+            "BLUSH",
+            "CHARGE",
+            "COMFORT",
+            "COWER",
+            "CURIOUS",
+            "DRINK",
+            "EAT",
+            "FLIRT",
+            "FAREWELL",
+            "GLARE",
+            "GREET",
+            "GROWL",
+            "HAPPY",
+            "HUG",
+            "INSULT",
+            "JOKE",
+            "LISTEN",
+            "LOVE",
+            "MOURN",
+            "NOD",
+            "PITY",
+            "POINT",
+            "PRAISE",
+            "PRAY",
+            "RUDE",
+            "SHAKE",
+            "SHIMMY",
+            "SHRUG",
+            "SLEEP",
+            "SMILE",
+            "SNICKER",
+            "SNIFF",
+            "STARE",
+            "TAUNT",
+            "TICKLE",
+            "VICTORY",
+            "WAIT",
+            "WAVE",
+            "WHISTLE",
+            "WINK",
+            "YAWN",
+            "NO",
+            "YES",
+            "VIOLIN",
+            "TIRED",
+            "SCARED",
+            "RASP",
+            "MOON",
+            "FLEE",
+            "FIDGET",
+            "EXCUSE",
+            "COUGH",
+            "CONFUSED",
+            "BORED",
+            "BELCH",
+            "APOLOGIZE",
+            "ANGRY",
+            "AMAZE",
+            "CACKLE",
+            "SMIRK",
+            "SPIT",
+            "ROFL",
+            "SLAP",
+            "BONK",
+            "BRB",
+            "COLD",
+            "DOOM",
+            "HELPME",
+            "HELLO",
+            "BYE",
+            "FLEE",
+            "CONGRATULATE",
+        ];
+        for name in all {
+            if let Some(t) = wrapped.text_id(name) {
+                if let Some(k) = wrapped.0.voice(t, GNOME, 0) {
+                    eprintln!(
+                        "gnome-male voice: {name} -> kit {k} {:?}",
+                        kits.get(k).map(|k| &k.name)
+                    );
+                }
+            }
+        }
+        let resolved = resolve_gnome(&wrapped);
+        eprintln!("gnome voices: {resolved:?}");
+        for k in resolved.into_iter().flatten() {
+            assert!(
+                kits.get(k).is_some(),
+                "voice kit {k} is not in SoundEntries"
+            );
         }
     }
 }

@@ -1,71 +1,168 @@
+# Market Day Mayhem cast (redesigned 2026-11-03 with the district plan in docs/azeroll/katamari-room-design.md
+# §6). The original Goldshire spawns (CMaNGOS-derived display ids, Kira's and Bo's real waypoints,
+# Andrew's loop) plus the invented fair crowd; everyone is placed in the vignette they belong to, and
+# nobody is indoors: the inn is shut ("gone to the fair"; Level 1 owns its interior).
 # Spawn/waypoint data derived from CMaNGOS classic-db (GPL-3.0).
 # Provenance and exact source revisions: docs/azeroll/data/goldshire-npcs.json.
 # The two road patrols are authored; the tannery formation uses VMaNGOS spacing.
 #
 # Optional per-NPC fields (ours, not from the databases; see npcs.rs for what they do):
 #   carry   = "mug" | "stein" | "bread" | "apple" | "hammer" | "cleaver" | "bottle" | "jug"
+#             | "pumpkin" | "watermelon" | "fish" | "cheese"
 #             what the NPC drops, as a small collectible, the first time it bolts.
 #   partner = "<another NPC's name>"   they flee holding hands, and mourn if the other is rolled up.
+#   activity = "chat" | "work" | "eat" | "sleep" | "bark" (stallholder cries wares) | "dance" |
+#              "applaud" | "fish"
 #   quirk   = "polish"  never reacts until rolled up (the innkeeper keeps polishing his mug)
 #           | "sleeper" sleeps through everything until the ball is on top of them
 #           | "brave"   a guard who charges a ball that can only dislodge him, bounces off, then flees
 
+# --- The beer garden (the start): the Lion's Pride has rolled its tables out ---------------------
 [[npc]]
-name = "Erma"
-carry = "apple"
-scene = "inn and yard"
+name = "Innkeeper Farley"
+quirk = "polish"
+carry = "mug"
+scene = "beer garden"
 role = "villager"
-activity = "chat"
-display = 9257
-at = [-9465.95, 48.14, 56.97]
-yaw = 1.466
+activity = "work"
+display = 1291
+at = [-9439.5, 49.5, 56.6]
+yaw = 2.6
 indoors = false
 
 [[npc]]
-name = "Priestess Josetta"
-scene = "inn and yard"
+name = "Brewer Hopkins"
+carry = "mug"
+scene = "beer garden"
+role = "villager"
+activity = "bark"
+display = 3266
+at = [-9435.5, 51.5, 56.7]
+yaw = 1.57
+indoors = false
+
+[[npc]]
+name = "Rowdy Rufus"
+carry = "stein"
+partner = "Barmaid Bessie"
+scene = "beer garden"
 role = "villager"
 activity = "chat"
-display = 1295
-at = [-9460.75, 33.13, 63.9]
-yaw = 4.363
-indoors = true
+display = 5038
+at = [-9443.0, 57.5, 56.5]
+yaw = 0.0
+indoors = false
+
+# She dropped the supper tray. She is standing over it.
+[[npc]]
+name = "Barmaid Bessie"
+carry = "mug"
+partner = "Rowdy Rufus"
+scene = "beer garden"
+role = "villager"
+activity = "chat"
+display = 9257
+at = [-9444.6, 55.8, 56.5]
+yaw = 3.5
+indoors = false
+
+# Asleep under the end table, as usual.
+[[npc]]
+name = "Remy \"Two Times\""
+quirk = "sleeper"
+carry = "bottle"
+scene = "beer garden"
+role = "villager"
+activity = "sleep"
+display = 3254
+at = [-9445.8, 57.2, 56.5]
+yaw = 6.231
+indoors = false
 
 [[npc]]
 name = "William Pestle"
 carry = "mug"
-scene = "inn and yard"
+scene = "beer garden"
 role = "villager"
-activity = "chat"
+activity = "eat"
 display = 5038
-at = [-9460.3, 31.94, 57.05]
+at = [-9438.0, 47.0, 56.7]
 yaw = 2.985
-indoors = true
+indoors = false
 
 [[npc]]
-name = "Michelle Belle"
-scene = "inn and yard"
+name = "Erma"
+carry = "apple"
+scene = "beer garden"
 role = "villager"
 activity = "chat"
-display = 1296
-at = [-9456.81, 29.36, 63.9]
-yaw = 2.967
-indoors = true
+display = 9257
+at = [-9449.0, 51.0, 56.6]
+yaw = 1.466
+indoors = false
+
+# The cook is doing turkey legs over the yard fire.
+[[npc]]
+name = "Toddrick"
+carry = "cleaver"
+scene = "beer garden"
+role = "villager"
+activity = "work"
+display = 3236
+at = [-9443.5, 57.8, 56.5]
+yaw = 4.5
+indoors = false
 
 [[npc]]
-name = "Zaldimar Wefhellt"
-scene = "inn and yard"
+name = "Brog Hamfist"
+carry = "bread"
+scene = "beer garden"
 role = "villager"
-activity = "chat"
-display = 1294
-at = [-9471.67, 34.45, 63.9]
-yaw = 4.625
-indoors = true
+activity = "eat"
+display = 1292
+at = [-9447.0, 49.0, 56.7]
+yaw = 1.449
+indoors = false
 
+[[npc]]
+name = "Barkeep Dobbins"
+carry = "mug"
+scene = "beer garden"
+role = "villager"
+activity = "eat"
+display = 3266
+at = [-9439.0, 56.5, 56.5]
+yaw = 1.466
+indoors = false
+
+# Chasing the hens round the coop.
+[[npc]]
+name = "Pip"
+partner = "Poppy"
+scene = "beer garden"
+role = "kid"
+activity = "chat"
+display = 338
+at = [-9441.5, 61.5, 56.4]
+yaw = 2.0
+indoors = false
+
+[[npc]]
+name = "Poppy"
+partner = "Pip"
+scene = "beer garden"
+role = "kid"
+activity = "chat"
+display = 252
+at = [-9440.0, 63.0, 56.4]
+yaw = 2.0
+indoors = false
+
+# --- The street: the parade of runners-up, and the crumbs to the cheese stall -------------------
 [[npc]]
 name = "Kira Songshine"
 carry = "bread"
-scene = "market"
+scene = "street"
 role = "villager"
 activity = "chat"
 display = 3234
@@ -75,33 +172,223 @@ indoors = false
 path = [[-9454.59, 66.63, 56.2], [-9415.6, 86.55, 56.99], [-9402.72, 93.9, 58.41], [-9383.63, 105.09, 60.04], [-9362.59, 111.67, 61.56], [-9337.43, 124.47, 63.72], [-9362.59, 111.67, 61.56], [-9383.63, 105.09, 60.04], [-9402.72, 93.9, 58.41], [-9415.6, 86.55, 56.99], [-9454.59, 66.63, 56.2]]
 
 [[npc]]
-name = "Melika Isenstrider"
-scene = "inn and yard"
+name = "Tomas"
+carry = "bread"
+scene = "street"
 role = "villager"
-activity = "chat"
-display = 5527
-at = [-9471.94, 27.41, 56.42]
-yaw = 5.585
-indoors = true
+activity = "work"
+display = 1293
+at = [-9458.0, 62.5, 56.3]
+yaw = 1.641
+indoors = false
+
+# Walked from the cheese stall to the garden eating a loaf; walking back for another.
+[[npc]]
+name = "Hungry Hodge"
+carry = "bread"
+scene = "street"
+role = "villager"
+activity = "eat"
+display = 3273
+at = [-9463.0, 67.0, 56.4]
+yaw = 3.14
+indoors = false
 
 [[npc]]
-name = "Innkeeper Farley"
-quirk = "polish"
-scene = "inn and yard"
+name = "Priestess Josetta"
+partner = "Michelle Belle"
+scene = "street"
 role = "villager"
 activity = "chat"
-display = 1291
-at = [-9462.66, 16.19, 57.05]
-yaw = 3.037
-indoors = true
+display = 1295
+at = [-9456.0, 52.0, 56.8]
+yaw = 4.363
+indoors = false
 
+[[npc]]
+name = "Michelle Belle"
+partner = "Priestess Josetta"
+scene = "street"
+role = "villager"
+activity = "chat"
+display = 1296
+at = [-9457.2, 53.6, 56.8]
+yaw = 2.967
+indoors = false
+
+[[npc]]
+name = "Zaldimar Wefhellt"
+partner = "Keryn Sylvius"
+scene = "street"
+role = "villager"
+activity = "chat"
+display = 1294
+at = [-9471.0, 53.0, 56.6]
+yaw = 4.625
+indoors = false
+
+[[npc]]
+name = "Keryn Sylvius"
+partner = "Zaldimar Wefhellt"
+scene = "street"
+role = "villager"
+activity = "chat"
+display = 1297
+at = [-9472.6, 54.2, 56.6]
+yaw = 1.1
+indoors = false
+
+# --- The stalls ----------------------------------------------------------------------------------
+[[npc]]
+name = "Cheesemonger Gouda"
+carry = "cheese"
+scene = "cheese and bread stall"
+role = "villager"
+activity = "bark"
+display = 3271
+at = [-9469.8, 74.8, 56.5]
+yaw = 0.0
+indoors = false
+
+[[npc]]
+name = "Baker Crumb"
+carry = "bread"
+scene = "cheese and bread stall"
+role = "villager"
+activity = "bark"
+display = 3236
+at = [-9465.6, 74.8, 56.5]
+yaw = 0.0
+indoors = false
+
+[[npc]]
+name = "Greengrocer Fenwick"
+carry = "watermelon"
+scene = "greengrocer"
+role = "villager"
+activity = "bark"
+display = 3272
+at = [-9479.5, 82.6, 56.7]
+yaw = 0.0
+indoors = false
+
+[[npc]]
+name = "Dame Perrin"
+partner = "Goodwife Ashby"
+scene = "greengrocer"
+role = "villager"
+activity = "chat"
+display = 5086
+at = [-9476.0, 78.2, 56.6]
+yaw = 3.8
+indoors = false
+
+[[npc]]
+name = "Goodwife Ashby"
+carry = "apple"
+partner = "Dame Perrin"
+scene = "greengrocer"
+role = "villager"
+activity = "chat"
+display = 5092
+at = [-9476.2, 76.0, 56.6]
+yaw = 1.0
+indoors = false
+
+# The apple-bobbing queue.
+[[npc]]
+name = "Mark"
+partner = "Joshua"
+scene = "greengrocer"
+role = "kid"
+activity = "chat"
+display = 338
+at = [-9471.8, 86.0, 56.7]
+yaw = 2.332
+indoors = false
+
+[[npc]]
+name = "Joshua"
+partner = "Mark"
+scene = "greengrocer"
+role = "kid"
+activity = "chat"
+display = 221
+at = [-9470.8, 84.4, 56.7]
+yaw = 2.226
+indoors = false
+
+[[npc]]
+name = "Dana"
+partner = "Lisa"
+scene = "greengrocer"
+role = "kid"
+activity = "chat"
+display = 257
+at = [-9474.0, 86.6, 56.7]
+yaw = 1.072
+indoors = false
+
+[[npc]]
+name = "Lisa"
+partner = "Dana"
+scene = "greengrocer"
+role = "kid"
+activity = "chat"
+display = 252
+at = [-9475.2, 88.2, 56.7]
+yaw = 0.966
+indoors = false
+
+# D33, replay-design.md 4.2: a cousin of Fizzwick, apple-bobbing at the head of the queue. Display 5378 (gnome girl
+# in goggles). She ignores a ball below `catch[0]`, waves, speaks and circles the barrel and the apple pyramid inside
+# the window, and cowers above `catch[1]`. `scale` multiplies the display's own; `catch[0]` follows her measured
+# `azeroll NPC: ... axis=` (she opens at D 2.15 x axis).
+[[npc]]
+name = "Twinkle Fizzwick"
+role = "cousin"
+cousin = "twinkle"
+scene = "greengrocer"
+activity = "applaud"
+carry = "apple"
+display = 5378
+scale = 0.5
+catch = [1.25, 1.88]
+caption = "I am NOT lost. I am apple-bobbing. There is a DIFFERENCE."
+at = [-9472.2, 82.9, 56.7]
+yaw = 2.03
+indoors = false
+
+[[npc]]
+name = "Fishwife Marlene"
+carry = "fish"
+scene = "fishmonger"
+role = "villager"
+activity = "bark"
+display = 3335
+at = [-9478.0, 91.4, 56.8]
+yaw = 0.0
+indoors = false
+
+# Fishing in the horse trough. Nobody has told him.
+[[npc]]
+name = "Old Pete the Angler"
+scene = "fishmonger"
+role = "villager"
+activity = "fish"
+display = 3340
+at = [-9474.6, 83.6, 56.7]
+yaw = 4.7
+indoors = false
+
+# --- The guard post: the watch on its lunch break -------------------------------------------------
 [[npc]]
 name = "Stormwind Guard"
 scene = "guard post"
 role = "guard"
 activity = "chat"
 display = 3258
-at = [-9455.43, 73.73, 56.95]
+at = [-9456.0, 75.2, 56.6]
 yaw = 3.142
 indoors = false
 
@@ -112,52 +399,268 @@ scene = "guard post"
 role = "guard"
 activity = "chat"
 display = 1985
-at = [-9465.52, 74.01, 56.78]
+at = [-9460.5, 75.5, 56.6]
 yaw = 4.59
 indoors = false
 
 [[npc]]
-name = "Keryn Sylvius"
-scene = "inn and yard"
-role = "villager"
-activity = "chat"
-display = 1297
-at = [-9465.79, 12.65, 63.9]
-yaw = 1.1
-indoors = true
-
-[[npc]]
-name = "Brog Hamfist"
-carry = "bread"
-scene = "inn and yard"
-role = "villager"
-activity = "eat"
-display = 1292
-at = [-9465.29, 9.63, 57.15]
-yaw = 1.449
-indoors = true
-
-[[npc]]
-name = "Barkeep Dobbins"
-carry = "mug"
-scene = "inn and yard"
-role = "villager"
-activity = "eat"
-display = 3266
-at = [-9459.98, 8.41, 57.15]
-yaw = 1.466
-indoors = true
-
-[[npc]]
-name = "Stormwind Guard"
+name = "Sir Bladewick, Adventurer"
 scene = "guard post"
+role = "villager"
+activity = "bark"
+display = 2357
+at = [-9461.0, 78.2, 56.6]
+yaw = 3.5
+indoors = false
+
+[[npc]]
+name = "Road Patrol 1"
+scene = "road patrol (authored)"
+role = "guard"
+activity = "chat"
+display = 3258
+at = [-9448, 70, 56.6]
+yaw = 0.0
+path = [[-9454.6,66.6,57.0],[-9337.4,124.5,63.0]]
+
+[[npc]]
+name = "Road Patrol 2"
+scene = "road patrol (authored)"
 role = "guard"
 activity = "chat"
 display = 3257
-at = [-9481.31, 74.42, 56.55]
-yaw = 3.069
+at = [-9443, 72, 56.6]
+yaw = 0.0
+path = [[-9454.6,66.6,57.0],[-9337.4,124.5,63.0]]
+
+# --- The potter, the wagon, the south gate --------------------------------------------------------
+[[npc]]
+name = "Potter Clayton"
+carry = "jug"
+scene = "potter"
+role = "villager"
+activity = "bark"
+display = 3273
+at = [-9514.0, 80.6, 57.8]
+yaw = 0.0
 indoors = false
 
+[[npc]]
+name = "Lady Vance"
+scene = "potter"
+role = "villager"
+activity = "chat"
+display = 1296
+at = [-9511.0, 74.4, 57.6]
+yaw = 1.6
+indoors = false
+
+[[npc]]
+name = "Tharynn Bouden"
+carry = "jug"
+scene = "wagon"
+role = "villager"
+activity = "chat"
+display = 1298
+at = [-9487.0, 80.6, 56.6]
+yaw = 5.969
+indoors = false
+
+[[npc]]
+name = "Brannock Hero-for-Hire"
+carry = "mug"
+scene = "wagon"
+role = "villager"
+activity = "chat"
+display = 4866
+at = [-9489.2, 82.4, 56.6]
+yaw = 3.14
+indoors = false
+
+[[npc]]
+name = "Pip the Mage, Adventurer"
+carry = "bread"
+scene = "wagon"
+role = "villager"
+activity = "eat"
+display = 11929
+at = [-9484.0, 76.0, 56.6]
+yaw = 2.0
+indoors = false
+
+[[npc]]
+name = "Stormwind Guard"
+scene = "south gate"
+role = "guard"
+activity = "chat"
+display = 3257
+at = [-9498.6, 64.0, 56.4]
+yaw = 4.2
+indoors = false
+
+# Fortunes told at the corner of the weaver's tent.
+[[npc]]
+name = "Gypsy Mirela"
+carry = "bottle"
+scene = "weaver"
+role = "villager"
+activity = "bark"
+display = 2358
+at = [-9511.5, 96.0, 58.0]
+yaw = 3.14
+indoors = false
+
+[[npc]]
+name = "Weaver Flaxen"
+scene = "weaver"
+role = "villager"
+activity = "bark"
+display = 5365
+at = [-9515.5, 93.0, 58.3]
+yaw = 1.57
+indoors = false
+
+[[npc]]
+name = "Melika Isenstrider"
+scene = "scarecrow field"
+role = "villager"
+activity = "chat"
+display = 5527
+at = [-9396.0, 64.0, 60.0]
+yaw = 5.585
+indoors = false
+
+# --- The judging stage -------------------------------------------------------------------------
+# At the foot of the bale steps, applauding her own pumpkin.
+[[npc]]
+name = "Ma Stonefield"
+carry = "pumpkin"
+scene = "judging stage"
+role = "villager"
+activity = "applaud"
+display = 1295
+at = [-9476.8, 59.7, 56.3]
+yaw = 3.14
+indoors = false
+
+[[npc]]
+name = "Judge Appleton"
+scene = "judging stage"
+role = "villager"
+activity = "chat"
+display = 1299
+at = [-9485.0, 77.6, 56.6]
+yaw = 0.0
+indoors = false
+
+[[npc]]
+name = "Judge Cobblepot"
+carry = "cheese"
+scene = "judging stage"
+role = "villager"
+activity = "chat"
+display = 1293
+at = [-9487.2, 77.6, 56.6]
+yaw = 3.0
+indoors = false
+
+[[npc]]
+name = "Gawker Tilda"
+scene = "judging stage"
+role = "villager"
+activity = "applaud"
+display = 1296
+at = [-9482.0, 65.6, 56.4]
+yaw = 4.0
+indoors = false
+
+[[npc]]
+name = "Gawker Orrin"
+carry = "apple"
+scene = "judging stage"
+role = "villager"
+activity = "applaud"
+display = 1294
+at = [-9484.2, 67.6, 56.4]
+yaw = 4.5
+indoors = false
+
+[[npc]]
+name = "Gawker Maud"
+partner = "Gawker Wat"
+scene = "judging stage"
+role = "villager"
+activity = "chat"
+display = 1300
+at = [-9479.0, 64.2, 56.4]
+yaw = 1.2
+indoors = false
+
+[[npc]]
+name = "Gawker Wat"
+carry = "mug"
+partner = "Gawker Maud"
+scene = "judging stage"
+role = "villager"
+activity = "chat"
+display = 1289
+at = [-9479.0, 62.2, 56.4]
+yaw = 4.5
+indoors = false
+
+[[npc]]
+name = "Tam"
+partner = "Tilly"
+scene = "judging stage"
+role = "kid"
+activity = "chat"
+display = 262
+at = [-9481.0, 69.2, 56.5]
+yaw = 4.0
+indoors = false
+
+[[npc]]
+name = "Tilly"
+partner = "Tam"
+scene = "judging stage"
+role = "kid"
+activity = "chat"
+display = 257
+at = [-9482.6, 70.2, 56.5]
+yaw = 4.0
+indoors = false
+
+[[npc]]
+name = "Lysander Lutewell the Bard"
+scene = "judging stage"
+role = "villager"
+activity = "dance"
+display = 11930
+at = [-9479.0, 67.2, 56.4]
+yaw = 1.0
+indoors = false
+
+[[npc]]
+name = "Dancing Dolly"
+scene = "judging stage"
+role = "villager"
+activity = "dance"
+display = 11929
+at = [-9477.4, 66.0, 56.4]
+yaw = 5.0
+indoors = false
+
+[[npc]]
+name = "Dancing Dunstan"
+scene = "judging stage"
+role = "villager"
+activity = "dance"
+display = 1288
+at = [-9478.0, 69.4, 56.4]
+yaw = 2.0
+indoors = false
+
+# --- The smithy's stall in the yard (the forge is a ball-trap behind a wall) -----------------------
 [[npc]]
 name = "Smith Argus"
 carry = "hammer"
@@ -165,9 +668,9 @@ scene = "smithy"
 role = "villager"
 activity = "work"
 display = 1288
-at = [-9456.65, 87.86, 58.43]
+at = [-9463.0, 120.0, 58.9]
 yaw = 2.409
-indoors = true
+indoors = false
 
 [[npc]]
 name = "Andrew Krighton"
@@ -176,56 +679,10 @@ scene = "smithy"
 role = "villager"
 activity = "work"
 display = 3340
-at = [-9464.08, 87.92, 58.34]
+at = [-9456.5, 124.5, 58.9]
 yaw = 0.001
-indoors = true
+indoors = false
 path = [[-9464.08, 87.92, 58.34], [-9464.31, 89.22, 58.34], [-9464.31, 89.22, 58.34]]
-
-[[npc]]
-name = "Toddrick"
-carry = "cleaver"
-scene = "inn and yard"
-role = "villager"
-activity = "work"
-display = 3236
-at = [-9466.42, 0.06, 57.03]
-yaw = 6.126
-indoors = true
-
-[[npc]]
-name = "Remy \"Two Times\""
-quirk = "sleeper"
-carry = "bottle"
-scene = "market"
-role = "villager"
-activity = "sleep"
-display = 3254
-at = [-9496.32, 72.83, 56.6]
-yaw = 6.231
-indoors = false
-
-[[npc]]
-name = "Tomas"
-carry = "bread"
-scene = "inn and yard"
-role = "villager"
-activity = "work"
-display = 1293
-at = [-9466.99, -4.53, 57.03]
-yaw = 1.641
-indoors = true
-
-[[npc]]
-name = "Bo"
-carry = "apple"
-scene = "children"
-role = "kid"
-activity = "chat"
-display = 338
-at = [-9460.58, 94.23, 58.35]
-yaw = 3.129
-indoors = false
-path = [[-9460.58, 94.23, 58.35], [-9460.58, 94.23, 58.35], [-9465.78, 113.6, 57.92], [-9457.16, 126.09, 59.11], [-9444.9, 135.83, 58.48], [-9435.16, 135.16, 58.41], [-9425.55, 129.19, 59.73], [-9425.55, 129.19, 59.73], [-9435.16, 135.16, 58.41], [-9444.9, 135.83, 58.48], [-9457.16, 126.09, 59.11], [-9465.78, 113.6, 57.92]]
 
 [[npc]]
 name = "Corina Steele"
@@ -235,19 +692,8 @@ scene = "smithy"
 role = "villager"
 activity = "work"
 display = 1287
-at = [-9464.87, 93.99, 58.53]
+at = [-9468.0, 122.0, 58.9]
 yaw = 0
-indoors = true
-
-[[npc]]
-name = "Tharynn Bouden"
-carry = "jug"
-scene = "market"
-role = "villager"
-activity = "chat"
-display = 1298
-at = [-9494.13, 83.91, 56.66]
-yaw = 5.969
 indoors = false
 
 [[npc]]
@@ -257,9 +703,9 @@ scene = "smithy"
 role = "villager"
 activity = "chat"
 display = 1289
-at = [-9457.64, 99.69, 58.43]
+at = [-9469.5, 125.0, 58.9]
 yaw = 4.119
-indoors = true
+indoors = false
 
 [[npc]]
 name = "Lyria Du Lac"
@@ -268,7 +714,7 @@ scene = "smithy"
 role = "villager"
 activity = "chat"
 display = 1300
-at = [-9461.85, 109.35, 57.88]
+at = [-9462.0, 131.0, 58.9]
 yaw = 2.653
 indoors = false
 
@@ -280,92 +726,88 @@ scene = "smithy"
 role = "villager"
 activity = "chat"
 display = 1299
-at = [-9468.14, 108.98, 57.66]
+at = [-9466.0, 132.0, 58.9]
 yaw = 1.798
 indoors = false
 
 [[npc]]
-name = "Mark"
-partner = "Joshua"
-scene = "children"
+name = "Bo"
+carry = "apple"
+scene = "smithy"
 role = "kid"
 activity = "chat"
 display = 338
-at = [-9424.66, 129.06, 59.8]
-yaw = 2.332
+at = [-9461.0, 117.0, 58.5]
+yaw = 3.129
+indoors = false
+path = [[-9461.0, 117.0, 58.5], [-9461.0, 117.0, 58.5], [-9465.78, 113.6, 57.92], [-9457.16, 126.09, 59.11], [-9444.9, 135.83, 58.48], [-9435.16, 135.16, 58.41], [-9425.55, 129.19, 59.73], [-9425.55, 129.19, 59.73], [-9435.16, 135.16, 58.41], [-9444.9, 135.83, 58.48], [-9457.16, 126.09, 59.11], [-9465.78, 113.6, 57.92]]
+
+# --- The livestock fair -----------------------------------------------------------------------------
+# The auctioneer, on his podium.
+[[npc]]
+name = "Drover Hob"
+carry = "bread"
+scene = "livestock fair"
+role = "villager"
+activity = "bark"
+display = 1292
+at = [-9548.0, 107.8, 59.0]
+yaw = 1.57
 indoors = false
 
 [[npc]]
-name = "Joshua"
-partner = "Mark"
-scene = "children"
-role = "kid"
+name = "Shepherd Wynn"
+scene = "livestock fair"
+role = "villager"
 activity = "chat"
-display = 221
-at = [-9422.29, 129.1, 59.71]
-yaw = 2.226
+display = 5527
+at = [-9541.0, 117.0, 59.0]
+yaw = 3.1
 indoors = false
 
+[[npc]]
+name = "Farmer Brindle"
+carry = "pumpkin"
+partner = "Farmer Oats"
+scene = "livestock fair"
+role = "villager"
+activity = "chat"
+display = 1298
+at = [-9552.0, 124.0, 59.0]
+yaw = 1.0
+indoors = false
+
+[[npc]]
+name = "Farmer Oats"
+carry = "watermelon"
+partner = "Farmer Brindle"
+scene = "livestock fair"
+role = "villager"
+activity = "chat"
+display = 3271
+at = [-9551.0, 127.0, 59.0]
+yaw = 4.6
+indoors = false
+
+# Two boys who came for the piglets.
 [[npc]]
 name = "Cameron"
 partner = "John"
-scene = "children"
+scene = "livestock fair"
 role = "kid"
 activity = "chat"
 display = 262
-at = [-9373, -66.34, 69.2]
+at = [-9536.0, 108.0, 59.0]
 yaw = 1.031
 indoors = false
 
 [[npc]]
 name = "John"
 partner = "Cameron"
-scene = "children"
+scene = "livestock fair"
 role = "kid"
 activity = "chat"
 display = 338
-at = [-9375.01, -64.15, 69.2]
+at = [-9537.4, 105.8, 59.0]
 yaw = 1.074
 indoors = false
-
-[[npc]]
-name = "Dana"
-partner = "Lisa"
-scene = "children"
-role = "kid"
-activity = "chat"
-display = 257
-at = [-9371.5, -63.84, 69.2]
-yaw = 1.072
-indoors = false
-
-[[npc]]
-name = "Lisa"
-partner = "Dana"
-scene = "children"
-role = "kid"
-activity = "chat"
-display = 252
-at = [-9375.8, -67.62, 69.2]
-yaw = 0.966
-indoors = false
-
-[[npc]]
-name = "Road Patrol 1"
-scene = "road patrol (authored)"
-role = "guard"
-activity = "chat"
-display = 3258
-at = [-9448, 70, 57.0]
-yaw = 0.0
-path = [[-9454.6,66.6,57.0],[-9337.4,124.5,63.0]]
-
-[[npc]]
-name = "Road Patrol 2"
-scene = "road patrol (authored)"
-role = "guard"
-activity = "chat"
-display = 3257
-at = [-9443, 72, 57.0]
-yaw = 0.0
-path = [[-9454.6,66.6,57.0],[-9337.4,124.5,63.0]]

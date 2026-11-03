@@ -19,6 +19,7 @@ use benilla_assets::materials::WowModelMaterial;
 /// per-pixel wall. Writes only on a flip.
 #[allow(clippy::type_complexity)]
 pub(super) fn apply_model_visibility(
+    parts: Option<Res<crate::terrain_stream::WmoPartitions>>,
     debug: Res<DebugState>,
     view: Res<ViewDistance>,
     cam: Query<
@@ -82,7 +83,8 @@ pub(super) fn apply_model_visibility(
     // runs before propagation, so a teleport's move shows only there.
     let scene_still = cam_view.as_ref().is_some_and(|(t, p, l)| {
         !t.is_changed() && !p.is_changed() && !l.as_ref().is_some_and(|l| l.is_changed())
-    }) && !debug.is_changed()
+    }) && !parts.as_ref().is_some_and(|p| p.is_changed())
+        && !debug.is_changed()
         && !view.is_changed()
         && !windows.is_changed()
         && !claim.is_changed()
@@ -164,13 +166,15 @@ pub(super) fn apply_model_visibility(
             };
 
             // A WMO group no portal reaches is hidden; a part with no `WmoGroupVis` never is.
-            let portal_visible = !m.portal_cull
-                || group_vis.is_none_or(|gv| {
-                    instances
-                        .get(gv.instance)
-                        .ok()
-                        .is_none_or(|inst| gv.drawn_by(inst))
-                });
+            let portal_visible = !group_vis
+                .is_some_and(|gv| parts.as_ref().is_some_and(|p| gv.piece_hidden(p)))
+                && (!m.portal_cull
+                    || group_vis.is_none_or(|gv| {
+                        instances
+                            .get(gv.instance)
+                            .ok()
+                            .is_none_or(|inst| gv.drawn_by(inst))
+                    }));
 
             // The same flood picks the fog: the group drawer `0x6b5190` and the group-doodad drawer
             // `0x6b62e0` push the interior triple only under the per-group `[0xca7f00]`. `None`

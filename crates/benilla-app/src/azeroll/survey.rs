@@ -18,7 +18,7 @@ use bevy::{
     render::view::screenshot::{save_to_disk, Screenshot},
 };
 
-use super::{level, BallState};
+use super::BallState;
 
 struct Placement {
     kind: &'static str,
@@ -70,6 +70,9 @@ pub(super) fn plugin(app: &mut App) {
 
 // North-up: rows run north to south, columns west to east. Nine 400-yd squares cover
 // the entire 1200-yd bounding square of the 600-yd inventory circle.
+/// The survey is centred on Goldshire (the Lion's Pride Inn yard), whichever level is playing.
+const ORIGIN: [f32; 3] = [-9450.0, 60.0, 57.0];
+
 fn shot(step: usize) -> (String, [f32; 3], bool) {
     if step < 9 {
         let row = step / 3;
@@ -77,8 +80,8 @@ fn shot(step: usize) -> (String, [f32; 3], bool) {
         return (
             format!("overhead-{row}-{col}"),
             [
-                level::START[0] + 400.0 - row as f32 * 400.0,
-                level::START[1] + 400.0 - col as f32 * 400.0,
+                ORIGIN[0] + 400.0 - row as f32 * 400.0,
+                ORIGIN[1] + 400.0 - col as f32 * 400.0,
                 60.0,
             ],
             true,
@@ -202,8 +205,8 @@ fn tick(
         for ix in -60..=60 {
             for iy in -60..=60 {
                 let p = [
-                    level::START[0] + ix as f32 * 10.0,
-                    level::START[1] + iy as f32 * 10.0,
+                    ORIGIN[0] + ix as f32 * 10.0,
+                    ORIGIN[1] + iy as f32 * 10.0,
                     500.0,
                 ];
                 if (p[0] - at[0]).abs() > 240.0 || (p[1] - at[1]).abs() > 240.0 {
@@ -274,7 +277,7 @@ fn tick(
 }
 
 fn in_radius(p: [f32; 3]) -> bool {
-    (p[0] - level::START[0]).powi(2) + (p[1] - level::START[1]).powi(2) <= 600.0_f32.powi(2)
+    (p[0] - ORIGIN[0]).powi(2) + (p[1] - ORIGIN[1]).powi(2) <= 600.0_f32.powi(2)
 }
 
 fn quote(s: &str) -> String {
@@ -385,8 +388,8 @@ fn dump(s: &Survey, models: &Assets<M2Model>, wmos: &Assets<WmoModel>) -> std::i
         let _ = writeln!(
             terrain,
             "{},{},{},{},{}",
-            level::START[0] + ix as f32 * 10.0,
-            level::START[1] + iy as f32 * 10.0,
+            ORIGIN[0] + ix as f32 * 10.0,
+            ORIGIN[1] + iy as f32 * 10.0,
             h,
             u8::from(w.is_some()),
             w.map_or(String::new(), |v| v.to_string())

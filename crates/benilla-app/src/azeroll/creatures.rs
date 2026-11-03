@@ -23,8 +23,8 @@ use bevy::platform::time::Instant;
 use bevy::prelude::*;
 
 use super::ball::{floor_rest, top_speed};
-use super::collect::{contact, Contact, Ram, Shed};
-use super::level::{Behavior, Look, Place, ELITE_SCALE, START};
+use super::collect::{contact, Contact, Shed};
+use super::level::{Behavior, Look, Place, ELITE_SCALE};
 use super::units::{self, flat, wow_to_bevy, yaw_toward, UnitSpec};
 use super::{
     playing, Attached, BallState, Collected, Collectible, Dash, Kind, Phase, Rng, Run, Source,
@@ -173,6 +173,8 @@ struct Brain {
     behavior: Behavior,
     /// Where it spawned, Bevy space.
     home: Vec3,
+    /// Indoor herds may use small steps but never migrate to another storey.
+    floor_home: Option<f32>,
     leash: f32,
     walk: f32,
     run: f32,
@@ -337,8 +339,9 @@ fn resolve_roster(
     mut cat: ResMut<Catalog>,
     assets: Option<Res<WorldAssets>>,
     design: Res<super::design::Design>,
+    wardrobe: Res<super::replay::Wardrobe>,
 ) {
-    if design.is_changed() {
+    if design.is_changed() || wardrobe.is_changed() {
         cat.ready = false;
     }
     if cat.ready {
@@ -361,9 +364,22 @@ fn resolve_roster(
                         .then_some(d)
                 })
                 .min();
-            cat.prince = display.and_then(|d| resolve_one(&catalog, d));
+            // D33: a capture override, else the chosen pusher, else the worn outfit, else the
+            // lowest gnome. A display the catalog does not know falls through to the next.
+            let over = crate::webenv::var("WOW_AZEROLL_PRINCE_DISPLAY")
+                .and_then(|v| v.parse::<u32>().ok())
+                .map(|d| (d, "override"));
+            let (chosen, why) = over
+                .into_iter()
+                .chain(wardrobe.prince())
+                .find_map(|(d, why)| resolve_one(&catalog, d).map(|r| (r, why)))
+                .map_or_else(
+                    || (display.and_then(|d| resolve_one(&catalog, d)), "default"),
+                    |(r, why)| (Some(r), why),
+                );
+            cat.prince = chosen;
             if let Some(p) = &cat.prince {
-                info!("azeroll: Prince gnome display={}", p.display);
+                info!("azeroll prince: display {} ({why})", p.display);
             }
             resolve(&catalog, &design.roster)
         }
@@ -448,7 +464,7 @@ fn plan_spawns(
     mut rng: ResMut<Rng>,
     design: Res<super::design::Design>,
 ) {
-    let start = wow_to_bevy(START);
+    let start = wow_to_bevy(design.start);
     let mut plan = Vec::new();
     for (i, s) in design.roster.iter().enumerate() {
         for _ in 0..s.count {
@@ -479,6 +495,48 @@ fn on_circle(angle: f32) -> Vec3 {
     Vec3::new(angle.cos(), 0.0, angle.sin())
 }
 
+/// Optional authored-deck support for city crowds. Restrict the down-ray to a nearby floor;
+/// a high ceiling must never pull a civilian onto a roof. Other recipes retain terrain only.
+fn herd_ground(
+    world: &WorldPoint<'_, '_>,
+    collision: &WorldCollision<'_, '_>,
+    at: Vec3,
+    wmo: bool,
+) -> Option<f32> {
+    let terrain = world.terrain_height_under(at);
+    if !wmo {
+        return terrain;
+    }
+    // Authored/current feet select the storey, not terrain above a cellar or
+    // the next room reached by a four-yard ray origin.
+    let floor = collision
+        .ray_body(
+            at + Vec3::Y * (STEP_LIMIT + 0.05),
+            Dir3::NEG_Y,
+            2. * STEP_LIMIT + 0.1,
+        )
+        .filter(|h| h.normal.y > 0.6)
+        .map(|h| at.y + STEP_LIMIT + 0.05 - h.distance);
+    nearby_ground(terrain, floor, at.y)
+}
+
+fn prince_ground(
+    world: &WorldPoint<'_, '_>,
+    collision: &WorldCollision<'_, '_>,
+    at: Vec3,
+) -> Option<f32> {
+    let floor = floor_rest(collision, at + Vec3::Y * 0.05, 0.05).map(|h| h - 0.05);
+    floor.or_else(|| {
+        world
+            .terrain_height_under(at)
+            .filter(|h| *h <= at.y + STEP_LIMIT)
+    })
+}
+
+fn nearby_ground(terrain: Option<f32>, floor: Option<f32>, feet: f32) -> Option<f32> {
+    floor.or_else(|| terrain.filter(|h| (*h - feet).abs() <= STEP_LIMIT))
+}
+
 /// Spawn the pending creatures whose ground has streamed in and whose model has loaded.
 #[allow(clippy::too_many_arguments)]
 fn spawn_creatures(
@@ -491,6 +549,7 @@ fn spawn_creatures(
     asset_server: Res<AssetServer>,
     models: Res<Assets<M2Model>>,
     world: WorldPoint,
+    collision: WorldCollision,
 ) {
     if !cat.ready || pending.0.is_empty() {
         return;
@@ -512,7 +571,7 @@ fn spawn_creatures(
             pending.0.remove(i);
             continue;
         };
-        let Some(ground) = world.terrain_height_under(pos) else {
+        let Some(ground) = herd_ground(&world, &collision, pos, design.wmo_floors) else {
             i += 1;
             continue;
         };
@@ -601,6 +660,9 @@ fn spawn_creatures(
             at,
             rng.range(0.0, std::f32::consts::TAU),
         );
+        if design.wmo_floors {
+            info!("azeroll herd placed: {} feet={at:?}", spec.name);
+        }
         let name: Cow<'static, str> = if elite {
             Cow::Owned(format!("Elite {}", spec.name))
         } else {
@@ -616,12 +678,15 @@ fn spawn_creatures(
                 half_extents,
                 center,
                 // Never a wall: a hostile that blocked the ball pinned it against geometry.
-                // It rams ([`Ram`]) and backs off instead.
+                // It rams ([`super::collect::Ram`]) and backs off instead.
                 solid: 0.0,
             },
             Brain {
                 behavior: spec.behavior,
                 home: at,
+                floor_home: (design.wmo_floors
+                    && (design.start_indoors || world.indoors_at(at + Vec3::Y * 0.1)))
+                .then_some(at.y),
                 leash: if spec.kind == Kind::Boss {
                     BOSS_RANGE
                 } else {
@@ -642,7 +707,8 @@ fn spawn_creatures(
                 cower: 0.0,
             },
         ));
-        if spec.kind == Kind::Boss {
+        // Hogger's camp loop and early pass are staged only where the recipe gives a camp.
+        if spec.kind == Kind::Boss && design.camp.is_some() {
             commands.entity(entity).insert(Stage::new());
         }
     }
@@ -727,7 +793,7 @@ fn creature_ai(
     mut rng: ResMut<Rng>,
     world: WorldPoint,
     collision: WorldCollision,
-    mut rams: MessageWriter<Ram>,
+    mut rammer: super::ram::Rammer,
     mut anim: MessageWriter<EmoteAnim>,
     mut seq: ResMut<PlaySeq>,
     mut stats: Local<AiStats>,
@@ -759,8 +825,8 @@ fn creature_ai(
         let state = contact(ball.radius, col.pickup);
         // The ball must also be level with the creature to ram it.
         let level = (ball.pos.y - tf.transform_point(col.center).y).abs() < ball.radius + col.size;
-        if col.kind == Kind::Boss {
-            brain.home = wow_to_bevy(design.camp);
+        if let (Kind::Boss, Some(camp)) = (col.kind, design.camp) {
+            brain.home = wow_to_bevy(camp);
         }
         if let Some(stage) = stage.as_deref_mut() {
             stage.roar_next -= dt;
@@ -803,12 +869,10 @@ fn creature_ai(
             && flat(pos - brain.home).length() < CHASE_LEASH;
         if chases {
             brain.charge += dt;
-            if dist <= ball.radius + col.size * RAM_REACH && level {
-                rams.write(Ram {
-                    entity,
-                    name: col.name.clone(),
-                    dir: toward,
-                });
+            if dist <= ball.radius + col.size * RAM_REACH
+                && level
+                && rammer.ram(&collision, &ball, entity, col.name.clone(), toward)
+            {
                 brain.retreat = RETREAT_SECS;
             }
             if brain.retreat > 0.0 || brain.charge > CHARGE_MAX {
@@ -840,12 +904,13 @@ fn creature_ai(
         if reaction != brain.reaction {
             if stats.seen.insert((col.name.to_string(), reaction)) || col.kind == Kind::Boss {
                 info!(
-                    "azeroll creature: {} {:?} -> {:?} contact={state:?} D={:.2} pickup={:.2} dist={dist:.1}",
+                    "azeroll creature: {} {:?} -> {:?} contact={state:?} D={:.2} pickup={:.2} dist={dist:.1} feet_y={:.3}",
                     col.name,
                     brain.reaction,
                     reaction,
                     ball.diameter(),
-                    col.pickup
+                    col.pickup,
+                    pos.y
                 );
             }
             if let Some(stage) = stage.as_deref_mut() {
@@ -941,7 +1006,7 @@ fn creature_ai(
                 brain.timer = 0.0;
             } else if let Some(stage) = stage.as_deref_mut() {
                 // Hogger does not wander: he walks his camp's loop, where the approach sees him.
-                let camp = wow_to_bevy(design.camp);
+                let camp = wow_to_bevy(design.camp.unwrap_or_default());
                 let to_point = flat(patrol_point(camp, stage.waypoint) - pos);
                 stage.leg += dt;
                 if to_point.length() < 2.0 || stage.leg > 14.0 {
@@ -1029,8 +1094,13 @@ fn creature_ai(
                 tf.rotation = tf.rotation.slerp(target, (dt * 10.0).min(1.0));
             }
             let next = pos + dir * speed * dt;
-            match world.terrain_height_under(next) {
-                Some(ground) if (ground - pos.y).abs() <= STEP_LIMIT + speed * dt => {
+            match herd_ground(&world, &collision, next, design.wmo_floors) {
+                Some(ground)
+                    if (ground - pos.y).abs() <= STEP_LIMIT + speed * dt
+                        && brain
+                            .floor_home
+                            .is_none_or(|home| (ground - home).abs() <= 1.5 * STEP_LIMIT) =>
+                {
                     tf.translation = Vec3::new(next.x, ground, next.z);
                 }
                 // A cliff face: stand rather than climb it.
@@ -1110,7 +1180,9 @@ fn camp_test(
     }
     let yards = (*at.get_or_insert(start) - 1.0 * time.delta_secs()).max(8.0);
     *at = Some(yards);
-    let camp = wow_to_bevy(design.camp);
+    let Some(camp) = design.camp.map(wow_to_bevy) else {
+        return;
+    };
     // Off the straight line from the village and looking a little to one side, so the clump is not
     // between the camera and him.
     let away =
@@ -1206,7 +1278,7 @@ fn roofed(collision: &WorldCollision, at: Vec3) -> bool {
 
 /// Hogger's early pass, the foreshadow: while the ball is still too small to take him and is
 /// outdoors in the village, he is set down at the edge of the view ahead of it, charges, rams it if
-/// he catches it (a growl and a knock through [`Ram`]), then lumbers off toward the camp and is
+/// he catches it (a growl and a knock through [`super::collect::Ram`]), then lumbers off toward the camp and is
 /// put back there once he is out of sight. He is never forced on the player: the pass happens at
 /// most once, and a ball that outruns the charge simply watches him give up.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
@@ -1218,7 +1290,7 @@ fn hogger_pass(
     rig: Option<Res<super::camera::CamRig>>,
     world: WorldPoint,
     collision: WorldCollision,
-    mut rams: MessageWriter<Ram>,
+    mut rammer: super::ram::Rammer,
     mut anim: MessageWriter<EmoteAnim>,
     mut seq: ResMut<PlaySeq>,
     mut hogger: Query<
@@ -1237,7 +1309,10 @@ fn hogger_pass(
     if dt <= 0.0 {
         return;
     }
-    let camp = wow_to_bevy(design.camp);
+    let (Some(camp), Some(patrol)) = (design.camp, design.patrol) else {
+        return;
+    };
+    let (camp, patrol) = (wow_to_bevy(camp), wow_to_bevy(patrol));
     for (entity, mut tf, mut mv, mut brain, col, mut stage) in &mut hogger {
         let pos = tf.translation;
         let to_ball = flat(ball.pos - pos);
@@ -1275,7 +1350,7 @@ fn hogger_pass(
                     continue;
                 }
                 stage.leg = 0.3;
-                if flat(ball.pos - wow_to_bevy(design.patrol)).length() > VISIT_VILLAGE
+                if flat(ball.pos - patrol).length() > VISIT_VILLAGE
                     || stage.steady < VISIT_STEADY
                     || roofed(&collision, ball.pos)
                 {
@@ -1313,14 +1388,9 @@ fn hogger_pass(
             Beat::Visit => {
                 let level =
                     (ball.pos.y - tf.transform_point(col.center).y).abs() < ball.radius + col.size;
-                let rammed = dist <= ball.radius + col.size * RAM_REACH && level;
-                if rammed {
-                    rams.write(Ram {
-                        entity,
-                        name: col.name.clone(),
-                        dir: toward,
-                    });
-                }
+                let rammed = dist <= ball.radius + col.size * RAM_REACH
+                    && level
+                    && rammer.ram(&collision, &ball, entity, col.name.clone(), toward);
                 if rammed
                     || stage.t > VISIT_CHASE
                     || contact(ball.radius, col.pickup) != Contact::Wall
@@ -1448,7 +1518,7 @@ pub(super) struct Prince;
 /// The Prince's fixed model scale, forever: he is about 0.35 yards tall and never grows,
 /// so against the starting ball (0.5 yd across) he is a little figure pushing it, as Katamari's
 /// 5 cm Prince is to a 10 cm ball, and a speck against a huge one. The camera does the work.
-const PRINCE_SCALE: f32 = 0.25;
+pub(super) const PRINCE_SCALE: f32 = 0.25;
 /// The gnome at scale 0.8 stood about 1.1 yd tall; the body measurements below were taken there
 /// and shrink with the scale.
 const BODY: f32 = PRINCE_SCALE / 0.8;
@@ -1592,9 +1662,10 @@ fn prince(
     mut lumps: Local<Vec<Lump>>,
     mut prince: Query<(&mut Transform, &mut MovementState, &mut Push), With<Prince>>,
 ) {
-    let mut windup = false;
+    let (mut windup, mut launched) = (false, false);
     for d in dashes.read() {
         windup |= *d == Dash::WindUp;
+        launched |= *d == Dash::Started;
     }
     if !matches!(
         phase.get(),
@@ -1609,7 +1680,10 @@ fn prince(
         let Some(res) = &cat.prince else { return };
         let az = behind(ball.heading);
         let at = ball.pos + bearing(az) * (radius + BODY_GAP + 0.1);
-        let Some(h) = world.terrain_height_under(at) else {
+        // The terrain, or the floor the ball rests on (an inn's ground has ADT holes under a real
+        // WMO floor), whichever is higher; neither known yet: wait.
+        let feet = Vec3::new(at.x, ball.pos.y - radius, at.z);
+        let Some(h) = prince_ground(&world, &collision, feet) else {
             return;
         };
         let at = Vec3::new(at.x, h, at.z);
@@ -1656,6 +1730,10 @@ fn prince(
     }
     if windup {
         push.windup = WINDUP_SECS;
+    }
+    // The burst ends the scramble on the spot: he runs with the dash, not before it.
+    if launched {
+        push.windup = 0.0;
     }
     push.windup = (push.windup - dt).max(0.0);
 
@@ -1728,13 +1806,11 @@ fn prince(
 
     // Feet: the terrain, or a floor a step above where he last stood (the same probe the ball
     // rests on, so a hall floor, a porch or a stair holds him), whichever is higher.
-    let Some(ground) = world.terrain_height_under(flat_at) else {
+    let base = push.feet.max(ball.pos.y - radius);
+    let feet = Vec3::new(flat_at.x, base, flat_at.z);
+    let Some(target) = prince_ground(&world, &collision, feet) else {
         return;
     };
-    let base = push.feet.max(ball.pos.y - radius) + 0.05;
-    let floor = floor_rest(&collision, Vec3::new(flat_at.x, base, flat_at.z), 0.05)
-        .map(|centre| centre - 0.05);
-    let target = floor.map_or(ground, |f| f.max(ground));
     push.feet = if (target - push.feet).abs() > 1.5 {
         target
     } else {
@@ -1808,6 +1884,56 @@ mod tests {
     }
 
     #[test]
+    fn a_cellar_floor_wins_over_the_terrain_above_it() {
+        assert_eq!(nearby_ground(Some(56.5), Some(49.8), 49.8), Some(49.8));
+        assert_eq!(
+            nearby_ground(Some(56.5), None, 49.8),
+            None,
+            "wait for missing cellar, never jump through ceiling"
+        );
+        assert_eq!(nearby_ground(Some(56.5), None, 56.5), Some(56.5));
+    }
+    #[test]
+    fn herd_probe_keeps_the_authored_storey_on_spawn_and_motion() {
+        use avian3d::prelude::{Collider, PhysicsPlugins, RigidBody};
+        use bevy::ecs::system::RunSystemOnce;
+        let mut app = App::new();
+        app.init_resource::<benilla_world::collision::MoverTraceExclusions>();
+        app.add_plugins((
+            MinimalPlugins,
+            bevy::transform::TransformPlugin,
+            bevy::asset::AssetPlugin::default(),
+            bevy::scene::ScenePlugin,
+            PhysicsPlugins::new(PostUpdate),
+        ));
+        app.init_asset::<Mesh>();
+        benilla_world::world_point::init_world_point_resources(app.world_mut());
+        for y in [-6., 0., 3.] {
+            app.world_mut().spawn((
+                RigidBody::Static,
+                Collider::cuboid(12., 0.2, 12.),
+                Transform::from_xyz(0., y - 0.1, 0.),
+            ));
+        }
+        app.update();
+        app.world_mut()
+            .run_system_once(|world: WorldPoint, collision: WorldCollision| {
+                for floor in [-6., 0., 3.] {
+                    let mut pos = Vec3::new(-2., floor, 0.);
+                    for _ in 0..60 {
+                        pos.x += 0.05;
+                        pos.y = herd_ground(&world, &collision, pos, true)
+                            .expect("same walking storey");
+                        assert!(
+                            (pos.y - floor).abs() < 1e-4,
+                            "must not snap to overlying floor"
+                        );
+                    }
+                }
+            })
+            .unwrap();
+    }
+    #[test]
     fn passive_ignores_everything() {
         for r in [0.2, 1.0, 5.0, 20.0] {
             assert_eq!(react(Behavior::Passive, r, 1.0), Reaction::Idle);
@@ -1867,7 +1993,7 @@ mod tests {
         let height = 1.1 / 0.8 * PRINCE_SCALE;
         assert!((0.3..=0.4).contains(&height), "{height}");
         // Below the starting ball's diameter (0.5 yd), and his hands are inside its height.
-        assert!(height < 2.0 * super::super::level::START_RADIUS);
+        assert!(height < 2.0 * 0.25);
         assert!(HAND_HEIGHT < height && KNEE_HEIGHT < HAND_HEIGHT);
     }
 

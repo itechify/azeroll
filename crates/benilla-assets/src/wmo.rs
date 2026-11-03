@@ -42,6 +42,8 @@ pub struct WmoGroupNav {
 pub struct WmoModel {
     /// The `WMOAreaTable.WMOID` key (root `MOHD.wmoID`).
     pub wmo_id: u32,
+    /// FNV-1a of the immutable root bytes, for optional authored partition audits.
+    pub source_fingerprint: u64,
     pub submeshes: Vec<ModelSubmesh>,
     /// The group of each entry in [`Self::submeshes`], so the portal cull can hide a whole group.
     pub submesh_group: Vec<u16>,
@@ -544,6 +546,9 @@ impl AssetLoader for WmoModelLoader {
         let group_footprint_grids = footprint_tri_grids(&group_footprints);
         Ok(WmoModel {
             wmo_id: benilla_formats::wmo_root_id(&bytes),
+            source_fingerprint: bytes.iter().fold(0xcbf29ce484222325u64, |h, b| {
+                (h ^ *b as u64).wrapping_mul(0x100000001b3)
+            }),
             submeshes,
             submesh_group,
             portal_vertices: portals.vertices.clone(),

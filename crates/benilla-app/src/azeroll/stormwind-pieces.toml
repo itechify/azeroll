@@ -1,0 +1,379 @@
+# D27 manifest v1, raw WMO XYZ in yards. No game data is embedded here.
+# Root SHA256 e621547f50bc9cd0c3b7b1f21fbb1d342d5852d3c772742bb64075fe97763ceb
+# Bounds filters assign triangles by centroid, in this order, after whole-group selection.
+# Faces at/below floor, bridge walkways, streets/canal beds and foundation covers stay permanent.
+# Set WOW_WMO_PART_AUDIT=<path> for derived OBB/face/MODD records against installed game data.
+version = 1
+map = 0
+uid = 10047
+root_fingerprint = "d3016a3a65cee60d"
+groups = 306
+# Skin existing low permanent collision floors with the Square's actual street material.
+# Original streets win the depth test; collision-only basement covers become visible.
+# Only the exposed walled precincts. The source collision padding also runs under
+# hills outside the walls; it must never become a visible city-sized orange plane.
+support_surfaces = [
+ { groups = [112], min = [-425, -61, -8], max = [-338, 81, 8] },
+ { groups = [112], min = [-465, -28, -8], max = [-425, 42, 8] },
+ { groups = [285], min = [-190, -55, -8], max = [-55, 65, 8] },
+]
+# Trunkless canopy backdrop cards float when their foreground walls have been eaten.
+# Real MODD trees and the authored collectible trees remain intact.
+omit_render_groups = [293, 294, 295, 296, 297, 298, 299, 300, 301, 302, 303, 304]
+
+[[parts]]
+id = 1
+name = "Trade District townhouse"
+groups = [59, 60, 61, 62, 230]
+floor = -6.7
+foundation = [-90, -51, -71, -20]
+[[parts.regions]]
+groups = [285]
+min = [-92, -53, -5.7]
+max = [-69, -18, 35]
+
+[[parts]]
+id = 2
+name = "Trade District cobbler"
+groups = [228]
+floor = -6
+foundation = [-123, -36, -100, -11]
+[[parts.regions]]
+groups = [285]
+min = [-125, -38, -5.0]
+max = [-98, -9, 35]
+
+[[parts]]
+id = 3
+name = "Trade District tailor"
+groups = [231]
+floor = -6.4
+foundation = [-132, 8, -108, 32]
+[[parts.regions]]
+groups = [285]
+min = [-134, 6, -5.4]
+max = [-106, 34, 35]
+
+[[parts]]
+id = 4
+name = "Trade District apothecary"
+groups = [229]
+floor = -7.3
+foundation = [-90, 14, -69, 38]
+[[parts.regions]]
+groups = [285]
+min = [-92, 12, -6.3]
+max = [-67, 40, 35]
+
+[[parts]]
+id = 5
+name = "Trade District general store"
+groups = [227]
+floor = -5.2
+foundation = [-162, 15, -141, 39]
+[[parts.regions]]
+groups = [285]
+min = [-164, 13, -4.2]
+max = [-139, 41, 35]
+
+[[parts]]
+id = 6
+name = "Flower shop"
+groups = [71]
+floor = -3.3
+foundation = [-82, 74, -62, 99]
+[[parts.regions]]
+groups = [285, 102]
+min = [-84, 72, -2.3]
+max = [-60, 101, 35]
+
+[[parts]]
+id = 7
+name = "Trade District provisions"
+groups = [218]
+floor = -4.8
+foundation = [-198, 5, -172, 30]
+[[parts.regions]]
+groups = [285]
+min = [-200, 3, -3.8]
+max = [-170, 32, 35]
+
+[[parts]]
+id = 8
+name = "Canal-side townhouse"
+groups = [63, 64, 65, 66]
+floor = 3.1
+foundation = [-241, 11, -205, 38]
+[[parts.regions]]
+groups = [285, 100, 108]
+min = [-243, 9, 4.1]
+max = [-203, 40, 40]
+
+[[parts]]
+id = 9
+name = "Trade District workshop"
+groups = [72]
+floor = 0.3
+foundation = [-223, -54, -196, -26]
+[[parts.regions]]
+groups = [285]
+min = [-225, -56, 1.3]
+max = [-194, -24, 38]
+
+[[parts]]
+id = 10
+name = "Canal-side shop"
+groups = [128]
+floor = -2.4
+foundation = [-249, -50, -224, -29]
+[[parts.regions]]
+groups = [156, 157, 164, 285]
+min = [-251, -52, -1.4]
+max = [-222, -27, 38]
+
+[[parts]]
+id = 11
+name = "Wine shop"
+groups = [127]
+floor = -1.9
+foundation = [-133, -96, -111, -72]
+[[parts.regions]]
+groups = [285, 106]
+min = [-135, -98, -0.8999999999999999]
+max = [-109, -70, 35]
+
+[[parts]]
+id = 12
+name = "Trade District lodgings"
+groups = [272, 273, 274, 275, 276]
+floor = -4.1
+foundation = [-148, -89, -114, -52]
+[[parts.regions]]
+groups = [285, 106]
+min = [-150, -91, -3.0999999999999996]
+max = [-112, -50, 38]
+
+[[parts]]
+id = 13
+name = "Stormwind Auction House"
+groups = [277]
+floor = -6.5
+foundation = [-191, -42, -147, -8]
+[[parts.regions]]
+groups = [285]
+min = [-193, -44, -5.5]
+max = [-145, -6, 45]
+
+[[parts]]
+id = 14
+name = "Stormwind bank"
+groups = [43, 85, 87]
+floor = -2.4
+foundation = [-97, -81, -31, -44]
+[[parts.regions]]
+groups = [285]
+min = [-99, -83, -1.4]
+max = [-29, -42, 44]
+
+[[parts]]
+id = 20
+name = "Trade canal bridge parapet"
+groups = [15]
+floor = 7
+
+[[parts]]
+id = 21
+name = "Trade canal bridge parapet"
+groups = [23]
+floor = 7
+
+[[parts]]
+id = 22
+name = "Trade canal bridge parapet"
+groups = [26]
+floor = 7
+
+[[parts]]
+id = 23
+name = "Northern canal bridge parapet"
+groups = [24]
+floor = 1
+
+[[parts]]
+id = 24
+name = "Northern canal bridge parapet"
+groups = [27]
+floor = 1
+
+[[parts]]
+id = 25
+name = "Northern canal bridge parapet"
+groups = [36]
+floor = 1
+
+[[parts]]
+id = 26
+name = "Cathedral canal bridge parapet"
+groups = [3]
+floor = 0
+
+[[parts]]
+id = 27
+name = "Cathedral canal bridge parapet"
+groups = [10]
+floor = 0
+
+[[parts]]
+id = 28
+name = "Cathedral canal bridge parapet"
+groups = [40]
+floor = 0
+
+[[parts]]
+id = 47
+name = "Cathedral Square west bell tower"
+groups = []
+floor = 4
+[[parts.regions]]
+groups = [112]
+min = [-435, 71, 5.0]
+max = [-425, 81, 30]
+
+[[parts]]
+id = 48
+name = "Cathedral Square south bell tower"
+groups = []
+floor = 2
+[[parts.regions]]
+groups = [112]
+min = [-379, -30, 3.0]
+max = [-368, -19, 29]
+
+[[parts]]
+id = 49
+name = "Cathedral Square east bell tower"
+groups = []
+floor = 8.3
+[[parts.regions]]
+groups = [112]
+min = [-364, 34.5, 9.3]
+max = [-353.5, 45, 34]
+
+[[parts]]
+id = 40
+name = "Cathedral Square orphanage block"
+groups = [305]
+floor = -0.1
+foundation = [-396, 37, -357, 63]
+[[parts.regions]]
+groups = [112]
+min = [-398, 35, 0.9]
+max = [-355, 65, 45]
+
+[[parts]]
+id = 41
+name = "Cathedral Square townhouse"
+groups = [67, 68, 69, 70]
+floor = -0.2
+foundation = [-422, 75, -402, 112]
+[[parts.regions]]
+groups = [112, 96]
+min = [-424, 73, 0.8]
+max = [-400, 114, 35]
+
+[[parts]]
+id = 42
+name = "Cathedral Square shop"
+groups = [80]
+floor = 1.5
+foundation = [-401, 83, -381, 106]
+[[parts.regions]]
+groups = [112, 96]
+min = [-403, 81, 2.5]
+max = [-379, 108, 35]
+
+[[parts]]
+id = 43
+name = "Cathedral Square workshop"
+groups = [221]
+floor = -0.3
+foundation = [-373, -47, -353, -24]
+[[parts.regions]]
+groups = [112]
+min = [-375, -49, 0.7]
+max = [-351, -22, 35]
+
+[[parts]]
+id = 44
+name = "Cathedral Square lodgings"
+groups = [130]
+floor = 1.2
+foundation = [-463, -91, -442, -67]
+[[parts.regions]]
+groups = [112, 104]
+min = [-465, -93, 2.2]
+max = [-440, -65, 35]
+
+[[parts]]
+id = 45
+name = "Southern canal shop"
+groups = [129]
+floor = -3.3
+foundation = [-382, -106, -361, -82]
+[[parts.regions]]
+groups = [112, 158, 159]
+min = [-384, -108, -2.3]
+max = [-359, -80, 35]
+
+[[parts]]
+id = 46
+name = "Northern canal shop"
+groups = [77]
+floor = -0.2
+foundation = [-319, 59, -295, 80]
+[[parts.regions]]
+groups = [112, 99, 108]
+min = [-321, 57, 0.8]
+max = [-293, 82, 40]
+
+[[parts]]
+id = 50
+name = "Cathedral Square eastern wall"
+groups = []
+floor = 3
+[[parts.regions]]
+groups = [112]
+min = [-335, -25, 4.0]
+max = [-310, 28, 45]
+
+[[parts]]
+id = 51
+name = "Cathedral Square northern terrace"
+groups = []
+floor = 3
+[[parts.regions]]
+groups = [112]
+min = [-399, 84, 4.0]
+max = [-349, 103, 42]
+
+[[parts]]
+id = 52
+name = "Cathedral Square southern terrace"
+groups = []
+floor = 2
+[[parts.regions]]
+groups = [112]
+min = [-430, -84, 3.0]
+max = [-385, -58, 43]
+
+[[parts]]
+id = 100
+name = "Cathedral of Light"
+groups = [95, 109, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183]
+floor = 4.55
+foundation = [-566, -32, -439, 49]
+finale = true
+[[parts.regions]]
+groups = [112]
+min = [-570, -35, 5.55]
+max = [-432, 51, 180]

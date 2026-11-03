@@ -1,7 +1,7 @@
 //! The mode's screens, in bevy_ui since FrameXML is off. Play is nearly wordless, as Katamari's
 //! is: the size dial, the clock, the item bubble and the Prince over the world, with the goal said
 //! once at the start and a few contextual moments after it
-//! (Hogger is ready; a gentle arrow when he is off screen or the player has stalled). The count,
+//! (the boss is ready; a gentle arrow when it is off screen or the player has stalled). The count,
 //! the requirement and the pickup log live on the pause and results screens. Also the banner and
 //! the ready, pause, results and finale overlays. Everything is built once at startup and shown
 //! or hidden by phase.
@@ -12,15 +12,23 @@ use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
+use super::campaign::CurrentLevel;
 use super::collect::contact;
-use super::hud_models::{self, HudMaterial, HudModels, ItemBubble};
-use super::level::{COLLECT_RATIO, HOGGER_SIZE};
-use super::progress::{Flow, Progress, CHALLENGES, FINALE_SECS};
+use super::design::{Design, GoalKind};
+use super::fizz::{FizzSays, Voice};
+use super::hud_models::{self, Commissioner, HudMaterial, HudModels, ItemBubble};
+use super::level::COLLECT_RATIO;
+use super::progress::{Flow, Progress};
+use super::ritual::Cue;
+use super::select::hub::{kind as art_kind, style as art_style, Art, ArtMaterial};
 use super::{
-    Attached, BallState, Collected, Collectible, Contact, GrowthBeat, Kind, Phase, Run, TierReached,
+    Attached, BallState, Collected, Collectible, Contact, GoalReached, GrowthBeat, Kind, Phase,
+    Run, StarEarned, TierReached,
 };
 use crate::loading_screen::LoadingScreen;
 use crate::sound::GlueSound;
+
+mod finish;
 
 const GOLD: Color = Color::srgb(1.0, 0.82, 0.0);
 const DIM: Color = Color::srgb(0.6, 0.6, 0.6);
@@ -35,7 +43,7 @@ const BANNER_SOUND: &str = "igQuestListOpen";
 /// The goal is said for this many seconds of play at the start, then fades over `INTRO_FADE`.
 const INTRO_HOLD: f32 = 4.0;
 const INTRO_FADE: f32 = 1.2;
-/// "Hogger is ready": seconds held, and the fades either side.
+/// "<Boss> is ready": seconds held, and the fades either side.
 const READY_HOLD: f32 = 2.4;
 const READY_IN: f32 = 0.18;
 const READY_OUT: f32 = 0.8;
@@ -56,7 +64,9 @@ const ARROW_MARGIN: Vec2 = Vec2::new(0.9, 0.84);
 /// How fast the arrow fades in and out, per second.
 const ARROW_RATE: f32 = 4.0;
 /// A banner fades over its last seconds.
-const BANNER_FADE: f32 = 0.8;
+const BANNER_FADE: f32 = 0.6;
+/// The intro on the ring is this much bigger than the resting label.
+const INTRO_SCALE: f32 = 1.6;
 /// The reference lays its UI out on a screen 768 units tall.
 const UI_HEIGHT: f32 = 768.0;
 /// Widget sizes, UI units: the size dial (its ring included), the clock, the item bubble and the
@@ -87,9 +97,10 @@ enum Panel {
     Hud,
     Ready,
     Pause,
-    Results,
-    /// The celebration over the world after Hogger is rolled up.
+    /// The celebration over the world after the goal is met.
     Finale,
+    /// Fizzwick's porthole and bubble, popping in under the clock.
+    Fizz,
 }
 
 /// A text of the in-run HUD, kept up to date by [`refresh_hud`].
@@ -122,6 +133,23 @@ enum Widget {
 #[derive(Component)]
 struct WidgetMat(Handle<HudMaterial>);
 
+/// The sliding row of Fizzwick's porthole and bubble.
+#[derive(Component)]
+struct FizzSlide;
+
+/// His bubble's text, and the porthole's material.
+#[derive(Component)]
+struct FizzText;
+
+/// His bubble's plaque. `refresh_pop` writes this height into the plaque's material, so it must
+/// find only this plaque: matching every [`Art`] also rewrote `lv[0].x` of the hub's inset, which
+/// is the first pin's state, and drew the first level's pin as won.
+#[derive(Component)]
+struct FizzBubble;
+
+#[derive(Component)]
+struct PortholeMat(Handle<HudMaterial>);
+
 /// The guide arrow, placed and turned by [`refresh_guide`].
 #[derive(Component)]
 struct GuideArrow;
@@ -133,27 +161,6 @@ enum PauseText {
     Goal,
 }
 
-/// A text of the results screen, filled by [`refresh_results`].
-#[derive(Component, Clone, Copy)]
-enum ResultText {
-    Title,
-    Subtitle,
-    Size,
-    Time,
-    Count,
-    Biggest,
-    /// The marker beside each number: NEW BEST, or the record to beat.
-    SizeNote,
-    TimeNote,
-    CountNote,
-    /// Row `n` of the most-rolled-up list, 0 the top.
-    Log(usize),
-    /// Row `n` of the optional challenges.
-    Challenge(usize),
-    /// What Enter and F do.
-    Prompt,
-}
-
 /// A text of the celebration, animated by [`refresh_finale`].
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
 enum FinaleText {
@@ -161,13 +168,15 @@ enum FinaleText {
     Sub,
 }
 
-/// The white flash as Hogger goes in.
+/// The white flash as the goal goes in.
 #[derive(Component)]
 struct FinaleFlash;
 
 /// A text of the title screen's bests, filled by [`refresh_ready`].
 #[derive(Component, Clone, Copy)]
 enum ReadyText {
+    /// The chosen level's title and objective.
+    Level,
     Best,
     Free,
 }
@@ -208,11 +217,41 @@ struct Cues {
     hint_cooldown: f32,
     hints: u32,
     rescan: f32,
+    /// 1 → 0 after a star is lit: its pop.
+    star_pop: f32,
+    /// The last whole second shown on the clock, for the last ten seconds' ticks.
+    last_left: Option<u32>,
+    /// How many of the hold's three ticks have sounded.
+    hold_ticks: u32,
 }
+
+/// The pop-in on screen: its line, the real seconds since it began and how long it holds.
+#[derive(Resource, Default)]
+struct Pop {
+    line: &'static str,
+    age: Option<f32>,
+    hold: f32,
+    /// A line waiting for Fizzwick's stage to have rendered (so the window is never empty), the
+    /// voice it was said with, and how long it has waited.
+    waiting: Option<(FizzSays, f32)>,
+}
+
+/// A waiting line is dropped after this long without his stage coming up.
+const POP_WAIT: f32 = 3.0;
+
+/// Slide in/out seconds, the typing speed (characters per second) and the shortest hold.
+const POP_SLIDE: f32 = 0.3;
+const POP_CPS: f32 = 48.0;
+const POP_HOLD: f32 = 2.6;
+/// The porthole's size and the bubble's width, UI units.
+const PORTHOLE: f32 = 104.0;
+const POP_BUBBLE: f32 = 300.0;
 
 pub(super) fn plugin(app: &mut App) {
     app.add_plugins(hud_models::plugin)
         .init_resource::<Cues>()
+        .init_resource::<Pop>()
+        .add_plugins(finish::plugin)
         .add_systems(Startup, (hud_models::setup, setup_hud).chain())
         .add_systems(OnEnter(Phase::Ready), clear_cues)
         .add_systems(
@@ -226,13 +265,15 @@ pub(super) fn plugin(app: &mut App) {
                 refresh_widgets,
                 refresh_guide,
                 refresh_finale,
+                refresh_pop,
+                finish::refresh,
+                finish::nudge,
             )
                 .chain()
                 .after(WorldStage::Input),
         )
         .add_systems(Update, refresh_ready.run_if(in_state(Phase::Ready)))
-        .add_systems(Update, refresh_pause.run_if(in_state(Phase::Paused)))
-        .add_systems(Update, refresh_results.run_if(in_state(Phase::Results)));
+        .add_systems(Update, refresh_pause.run_if(in_state(Phase::Paused)));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -281,6 +322,7 @@ fn setup_hud(
     asset_server: Res<AssetServer>,
     models: Res<HudModels>,
     mut mats: ResMut<Assets<HudMaterial>>,
+    mut art_mats: ResMut<Assets<ArtMaterial>>,
 ) {
     let mut widget = |kind: f32, tex: &Handle<Image>, p: Vec4| {
         mats.add(HudMaterial {
@@ -294,6 +336,12 @@ fn setup_hud(
     let item_mat = widget(2.0, &models.item, Vec4::ZERO);
     let prince_mat = widget(2.0, &models.prince, Vec4::new(1.0, 0.0, 0.0, 0.0));
     let arrow_mat = widget(3.0, &models.blank, Vec4::new(1.0, 0.5, 0.0, 0.0));
+    let porthole_mat = widget(4.0, &models.commissioner, Vec4::ZERO);
+    let bubble_mat = art_mats.add(ArtMaterial::new(
+        art_kind::PLAQUE,
+        Vec4::new(art_style::BUBBLE, 0.0, 0.0, 0.5),
+        &models.blank,
+    ));
     let font = crate::char_select::wow_font(&asset_server);
     let number_font: Handle<Font> = asset_server.load("mpq://Fonts/ARIALN.ttf");
     let f = &font;
@@ -375,6 +423,8 @@ fn setup_hud(
                         },
                     ));
                 });
+                // The Finish button, from the goal on (`finish`).
+                finish::spawn_button(col, f);
             });
 
             // The goal, said once at the start, top centre. It is inset past the dial on the left
@@ -472,22 +522,24 @@ fn setup_hud(
                 Visibility::Hidden,
             ));
 
-            // The banner, upper centre.
+            // The banner, upper centre: one small line, clear of the dial's label.
             root.spawn(Node {
                 position_type: PositionType::Absolute,
-                top: Val::Percent(22.0),
+                top: Val::Percent(14.0),
                 width: Val::Percent(100.0),
                 justify_content: JustifyContent::Center,
                 ..default()
             })
             .with_children(|row| {
-                row.spawn((HudText::Banner, centered(f, "", 42.0, GOLD)));
+                row.spawn((HudText::Banner, centered(f, "", 26.0, GOLD)));
             });
 
             // A contextual moment under the banner.
             root.spawn(Node {
                 position_type: PositionType::Absolute,
-                top: Val::Percent(31.0),
+                // Below the banner (14 %), the dial's label (26 %) and Fizzwick's porthole (to
+                // 32 %), so a tier opening and "<Boss> is ready!" never overlap.
+                top: Val::Percent(38.0),
                 width: Val::Percent(100.0),
                 justify_content: JustifyContent::Center,
                 ..default()
@@ -513,6 +565,7 @@ fn setup_hud(
         .with_children(|root| {
             root.spawn(centered(f, "AZEROLL", 104.0, GOLD));
             root.spawn(centered(f, "Everything is Bind on Pickup.", 30.0, PARCHMENT));
+            root.spawn((ReadyText::Level, centered(f, "", 34.0, Color::WHITE)));
             root.spawn((ReadyText::Best, centered(f, "", 22.0, PARCHMENT)));
             root.spawn(Node {
                 margin: UiRect::top(Val::Px(14.0)),
@@ -546,95 +599,12 @@ fn setup_hud(
             root.spawn((PauseText::Detail, centered(f, "", 20.0, Color::WHITE)));
             root.spawn(centered(
                 f,
-                "Esc to resume \u{b7} R to start over",
+                "Esc to resume \u{b7} R to start over \u{b7} L for level select",
                 18.0,
                 DIM,
             ));
-        });
-
-    // --- Results. ---
-    commands
-        .spawn((
-            Panel::Results,
-            overlay(8.0),
-            BackgroundColor(Color::srgba(0.04, 0.02, 0.0, 0.9)),
-            GlobalZIndex(440),
-            Visibility::Hidden,
-            bevy::ui::FocusPolicy::Pass,
-        ))
-        .with_children(|root| {
-            root.spawn((ResultText::Title, centered(f, "", 64.0, GOLD)));
-            root.spawn((ResultText::Subtitle, centered(f, "", 18.0, PARCHMENT)));
-            root.spawn(Node {
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                row_gap: Val::Px(2.0),
-                margin: UiRect::vertical(Val::Px(8.0)),
-                ..default()
-            })
-            .with_children(|col| {
-                for (which, note) in [
-                    (ResultText::Time, Some(ResultText::TimeNote)),
-                    (ResultText::Size, Some(ResultText::SizeNote)),
-                    (ResultText::Count, Some(ResultText::CountNote)),
-                    (ResultText::Biggest, None),
-                ] {
-                    col.spawn(Node {
-                        column_gap: Val::Px(16.0),
-                        align_items: AlignItems::Center,
-                        ..default()
-                    })
-                    .with_children(|row| {
-                        row.spawn((which, centered(f, "", 24.0, Color::WHITE)));
-                        if let Some(note) = note {
-                            row.spawn((note, centered(f, "", 18.0, GOLD)));
-                        }
-                    });
-                }
-            });
-            root.spawn(centered(f, "MOST ROLLED UP", 14.0, GOLD));
-            // Two columns of five, read down the left then down the right.
-            root.spawn(Node {
-                column_gap: Val::Px(48.0),
-                ..default()
-            })
-            .with_children(|cols| {
-                for c in 0..2 {
-                    cols.spawn(Node {
-                        flex_direction: FlexDirection::Column,
-                        row_gap: Val::Px(2.0),
-                        width: Val::Px(230.0),
-                        ..default()
-                    })
-                    .with_children(|rows| {
-                        for r in 0..5 {
-                            rows.spawn((ResultText::Log(c * 5 + r), text(f, "", 17.0, PARCHMENT)));
-                        }
-                    });
-                }
-            });
-            root.spawn(centered(f, "OPTIONAL CHALLENGES", 14.0, GOLD))
-                .insert(Node {
-                    margin: UiRect::top(Val::Px(10.0)),
-                    ..default()
-                });
-            root.spawn(Node {
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(2.0),
-                ..default()
-            })
-            .with_children(|rows| {
-                for i in 0..CHALLENGES.len() {
-                    rows.spawn((ResultText::Challenge(i), text(f, "", 17.0, DIM)));
-                }
-            });
-            root.spawn(Node {
-                margin: UiRect::top(Val::Px(14.0)),
-                ..default()
-            })
-            .with_children(|row| {
-                row.spawn((ResultText::Prompt, centered(f, "", 24.0, GOLD)));
-            });
+            // After a size goal: finish the run from here (`finish`).
+            finish::spawn_pause(root, f);
         });
 
     // --- The finale: the banner, the line under it and the flash. ---
@@ -647,7 +617,7 @@ fn setup_hud(
                 height: Val::Percent(100.0),
                 flex_direction: FlexDirection::Column,
                 align_items: AlignItems::Center,
-                padding: UiRect::top(Val::Percent(26.0)),
+                padding: UiRect::top(Val::Percent(12.0)),
                 row_gap: Val::Px(6.0),
                 ..default()
             },
@@ -671,9 +641,86 @@ fn setup_hud(
             ));
             root.spawn((
                 FinaleText::Title,
-                centered(f, "HOGGER, ROLLED UP!", 104.0, GOLD),
+                text(f, "", 64.0, GOLD),
+                TextLayout::new(Justify::Center, LineBreak::NoWrap),
+                Node::default(),
             ));
-            root.spawn((FinaleText::Sub, centered(f, "", 28.0, PARCHMENT)));
+            root.spawn((FinaleText::Sub, centered(f, "", 24.0, PARCHMENT)));
+        });
+
+    // --- Fizzwick's porthole: a window and a one-line bubble under the clock. ---
+    commands
+        .spawn((
+            Panel::Fizz,
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                ..default()
+            },
+            GlobalZIndex(445),
+            Visibility::Hidden,
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .with_children(|root| {
+            root.spawn((
+                FizzSlide,
+                Node {
+                    position_type: PositionType::Absolute,
+                    right: Val::Px(12.0),
+                    top: Val::Px(150.0),
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(2.0),
+                    ..default()
+                },
+                UiTransform::default(),
+            ))
+            .with_children(|row| {
+                row.spawn((
+                    PortholeMat(porthole_mat.clone()),
+                    MaterialNode(porthole_mat.clone()),
+                    Node {
+                        width: Val::Px(PORTHOLE),
+                        height: Val::Px(PORTHOLE),
+                        flex_shrink: 0.0,
+                        ..default()
+                    },
+                ));
+                row.spawn((
+                    FizzBubble,
+                    Art(bubble_mat.clone()),
+                    MaterialNode(bubble_mat.clone()),
+                    Node {
+                        width: Val::Px(POP_BUBBLE),
+                        min_height: Val::Px(54.0),
+                        padding: UiRect {
+                            left: Val::Px(30.0),
+                            right: Val::Px(14.0),
+                            top: Val::Px(10.0),
+                            bottom: Val::Px(10.0),
+                        },
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                ))
+                .with_children(|b| {
+                    b.spawn((
+                        FizzText,
+                        Text::new(""),
+                        TextFont {
+                            font: font.clone(),
+                            font_size: 19.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.16, 0.10, 0.05)),
+                        Node {
+                            flex_basis: Val::Px(0.0),
+                            flex_grow: 1.0,
+                            ..default()
+                        },
+                    ));
+                });
+            });
         });
 }
 
@@ -684,7 +731,11 @@ fn setup_hud(
 /// The UI is laid out on a screen 768 units tall at any resolution.
 fn apply_ui_scale(windows: Query<&Window, With<PrimaryWindow>>, mut scale: ResMut<UiScale>) {
     let Ok(window) = windows.single() else { return };
-    let want = window.height() / UI_HEIGHT;
+    // A capture aid lays the screens out for another aspect (see `select::capture_aspect`).
+    let want = match super::select::capture_aspect() {
+        Some(aspect) => window.width() / (UI_HEIGHT * aspect),
+        None => window.height() / UI_HEIGHT,
+    };
     if want > 0.0 && (scale.0 - want).abs() > 1e-4 {
         scale.0 = want;
     }
@@ -700,12 +751,13 @@ fn show_panels(
     let p = *phase.get();
     for (panel, mut vis, mut node) in &mut panels {
         let on = match panel {
-            Panel::Hud => p != Phase::Results,
+            Panel::Hud => !matches!(p, Phase::Results | Phase::Select),
             // The title waits for the world: the loading screen is up until it is ready.
             Panel::Ready => p == Phase::Ready && !loading.covering(),
             Panel::Pause => p == Phase::Paused,
-            Panel::Results => p == Phase::Results,
             Panel::Finale => flow.finale.is_some() && p != Phase::Results,
+            // The pop-in shows itself (`refresh_pop`); the panel only has to be out of the hub.
+            Panel::Fizz => !matches!(p, Phase::Select | Phase::Ready) && !loading.covering(),
         };
         let want = if on {
             Visibility::Inherited
@@ -754,17 +806,27 @@ fn fill(kind: Kind, pickup: f32, radius: f32) -> f32 {
     (pickup / (radius * COLLECT_RATIO).max(1e-3)).clamp(0.0, 1.0)
 }
 
-/// Age the dial's cues and take in the growth and tier messages.
+/// Age the dial's cues and take in the growth, tier, goal and star messages; tick the last ten
+/// seconds and the finish key's hold.
+#[allow(clippy::too_many_arguments)]
 fn read_cues(
     time: Res<Time<Real>>,
+    phase: Res<State<Phase>>,
+    run: Res<Run>,
+    flow: Res<Flow>,
+    design: Res<Design>,
     mut beats: MessageReader<GrowthBeat>,
     mut tiers: MessageReader<TierReached>,
+    mut goals: MessageReader<GoalReached>,
+    mut stars: MessageReader<StarEarned>,
     mut cues: ResMut<Cues>,
+    mut sounds: MessageWriter<Cue>,
 ) {
     let dt = time.delta_secs();
     cues.tick = (cues.tick - dt * 1.8).max(0.0);
     cues.bloom = (cues.bloom - dt * 0.8).max(0.0);
     cues.pulse = (cues.pulse - dt * 3.0).max(0.0);
+    cues.star_pop = (cues.star_pop - dt * 4.0).max(0.0);
     if beats.read().count() > 0 {
         cues.tick = 1.0;
         cues.pulse = 1.0;
@@ -773,8 +835,32 @@ fn read_cues(
         cues.bloom = 1.0;
         cues.pulse = 1.0;
     }
+    // The goal beat: the rosette blooms.
+    for _ in goals.read() {
+        cues.bloom = 1.0;
+        cues.pulse = 1.0;
+    }
+    for _ in stars.read() {
+        cues.star_pop = 1.0;
+        cues.pulse = 1.0;
+        sounds.write(Cue::Star);
+    }
+    // The last ten seconds tick once each; the finish key rises in three notes.
+    if *phase.get() == Phase::Playing && !flow.free_roll && run.elapsed > 0.0 {
+        let left = (design.time_limit - run.elapsed).max(0.0).ceil() as u32;
+        if cues.last_left != Some(left) {
+            if (1..=10).contains(&left) && cues.last_left.is_some() {
+                sounds.write(Cue::Tick);
+            }
+            cues.last_left = Some(left);
+        }
+    }
+    let notes = (flow.call_hold * 3.0).floor() as u32;
+    if notes > cues.hold_ticks {
+        sounds.write(Cue::Tick);
+    }
+    cues.hold_ticks = notes;
 }
-
 /// The nearest cluster of meals: things the ball could take right now, not crumbs, within
 /// `CLUSTER_RANGE` on the ground plane. Things are counted on a grid of `CLUSTER_CELL` and each
 /// cell scored with its eight neighbours; the best cell is the nearest with at least three
@@ -837,6 +923,7 @@ fn guidance(
     run: Res<Run>,
     flow: Res<Flow>,
     ball: Res<BallState>,
+    design: Res<Design>,
     mut collected: MessageReader<Collected>,
     things: Query<(Entity, &Collectible, &GlobalTransform), Without<Attached>>,
     mut hogger: Local<Option<Entity>>,
@@ -868,9 +955,12 @@ fn guidance(
         return;
     }
 
+    // Only a creature goal has anything to point at.
     let mut boss = (*hogger).and_then(|e| things.get(e).ok());
-    if boss.is_none() {
-        boss = things.iter().find(|(_, c, _)| c.kind == Kind::Boss);
+    if boss.is_none() && design.goal.kind == GoalKind::Collect {
+        boss = things
+            .iter()
+            .find(|(_, c, _)| c.kind == Kind::Boss && c.name == design.goal.target.as_str());
         *hogger = boss.map(|b| b.0);
     }
     let edible = boss.is_some_and(|(_, c, _)| contact(ball.radius, c.pickup) == Contact::RollUp);
@@ -1024,7 +1114,10 @@ fn refresh_guide(
 }
 
 /// A length as the readout prints it: yards and inches below ten yards, tenths of a yard above.
-fn fmt_size(yards: f32) -> String {
+pub(super) fn fmt_size(yards: f32) -> String {
+    if yards >= 100.0 {
+        return format!("{yards:.0} yd");
+    }
     if yards >= 10.0 {
         return format!("{yards:.1} yd");
     }
@@ -1038,6 +1131,9 @@ fn fmt_size(yards: f32) -> String {
 
 /// The size as the dial prints it, tight so it sits inside the rosette: `3yd 12in`, then `23.4yd`.
 fn fmt_dial(yards: f32) -> String {
+    if yards >= 100.0 {
+        return format!("{yards:.0}yd");
+    }
     if yards >= 10.0 {
         return format!("{yards:.1}yd");
     }
@@ -1050,7 +1146,7 @@ fn fmt_dial(yards: f32) -> String {
 }
 
 /// A time as the records print it: `07:12.4`.
-fn fmt_time(secs: f32) -> String {
+pub(super) fn fmt_time(secs: f32) -> String {
     let tenths = (secs.max(0.0) * 10.0).floor() as u32;
     format!(
         "{:02}:{:02}.{}",
@@ -1082,7 +1178,7 @@ fn refresh_hud(
     mut sounds: MessageWriter<GlueSound>,
 ) {
     // The number glides to the real size; a fresh run starts on it.
-    let target = ball.diameter();
+    let target = shown_diameter(&run, &ball, &design, &flow);
     let cur = shown.get_or_insert(target);
     if run.elapsed == 0.0 && run.count == 0 {
         *cur = target;
@@ -1098,26 +1194,25 @@ fn refresh_hud(
     let timer = format!("{:02}:{:02}", left / 60, left % 60);
     let timer_color = if left < 60 { RED } else { Color::WHITE };
 
-    // The ball must reach a radius at which Hogger's size is within `COLLECT_RATIO` of it.
-    let need = HOGGER_SIZE / COLLECT_RATIO;
+    // The radius the goal needs: for a creature, the one at which its size is within
+    // `COLLECT_RATIO`; for a size goal, half its diameter.
+    let need = design.goal_diameter() / 2.0;
 
-    // The goal is said once as the run starts, then fades for good; the title already says it.
+    // The goal is said once as the run starts, then fades for good; the hub already said it.
     let started = matches!(phase.get(), Phase::Playing | Phase::Paused) && !run.won;
     let intro = if started {
         ((INTRO_HOLD + INTRO_FADE - run.elapsed) / INTRO_FADE).clamp(0.0, 1.0)
     } else {
         0.0
     };
+    let size_goal = design.goal.kind == GoalKind::Size;
     let (goal, sub) = if flow.free_roll {
         (
             "Free Roll".to_string(),
             "No clock. Roll up what you like.".to_string(),
         )
     } else {
-        (
-            "Roll up Hogger!".to_string(),
-            format!("Grow to {} across", fmt_size(2.0 * need)),
-        )
+        (goal_lines(&design), String::new())
     };
 
     let (timer, timer_color) = if flow.free_roll {
@@ -1125,8 +1220,19 @@ fn refresh_hud(
     } else {
         (timer, timer_color)
     };
-    let ring_goal = if run.won {
+    // The ring's end says the goal; for a size goal the first seconds say it big, with a "!" (this
+    // is the whole intro). After the goal it names the next star.
+    let mut ring_scale = 1.0;
+    let ring_goal = if flow.free_roll {
         String::new()
+    } else if run.won {
+        match next_star(&design, run.stars).filter(|_| size_goal) {
+            Some((_, at)) => format!("Next {}", fmt_dial(at)),
+            None => String::new(),
+        }
+    } else if size_goal && intro > 0.0 && run.elapsed < INTRO_HOLD {
+        ring_scale = INTRO_SCALE;
+        format!("{}!", fmt_dial(2.0 * need))
     } else {
         format!("Goal {}", fmt_dial(2.0 * need))
     };
@@ -1146,13 +1252,13 @@ fn refresh_hud(
         *last_banner = banner.clone();
     }
 
-    // "Hogger is ready": pops in, holds, fades.
+    // "<Boss> is ready": pops in, holds, fades.
     let (moment, moment_alpha, moment_pop) = match cues.ready_age {
         Some(age) => {
             let a_in = (age / READY_IN).clamp(0.0, 1.0);
             let a_out = ((READY_IN + READY_HOLD + READY_OUT - age) / READY_OUT).clamp(0.0, 1.0);
             (
-                "Hogger is ready!".to_string(),
+                format!("{} is ready!", design.goal.target),
                 a_in.min(a_out),
                 1.0 - (age / 0.35).clamp(0.0, 1.0),
             )
@@ -1163,7 +1269,16 @@ fn refresh_hud(
     for (which, mut text, mut color, mut font, mut shadow) in &mut texts {
         let (s, c) = match which {
             HudText::Size => (size.clone(), Color::WHITE),
-            HudText::RingGoal => (ring_goal.clone(), PARCHMENT),
+            HudText::RingGoal => {
+                let size = 17.0 * ring_scale;
+                if (font.font_size - size).abs() > 0.5 {
+                    font.font_size = size;
+                }
+                (
+                    ring_goal.clone(),
+                    if ring_scale > 1.0 { GOLD } else { PARCHMENT },
+                )
+            }
             // Set by `refresh_widgets`, with the bubble they label.
             HudText::ItemName | HudText::Combo => continue,
             HudText::Timer => (timer.clone(), timer_color),
@@ -1188,6 +1303,61 @@ fn refresh_hud(
         let shade = Color::BLACK.with_alpha(c.alpha());
         if shadow.color != shade {
             shadow.color = shade;
+        }
+    }
+}
+
+/// The goal said at the start of a run: one centred line for a single-target goal. A size goal is
+/// said on the dial's ring instead, so it has none here; the level's title is the hub's, not play's.
+fn goal_lines(design: &Design) -> String {
+    match design.goal.kind {
+        GoalKind::Size => String::new(),
+        GoalKind::Collect | GoalKind::Finale => format!("Roll up {}!", design.goal.target),
+    }
+}
+
+/// The D26 terminal display size: what the finale's title and the dial agree on.
+const FINALE_DISPLAY: f32 = 595.0;
+
+/// The size the readouts show: the finale's display size once it is staged, else the ball's own.
+fn shown_diameter(run: &Run, ball: &BallState, design: &Design, flow: &Flow) -> f32 {
+    run.final_diameter.unwrap_or_else(|| {
+        if design.goal.kind == GoalKind::Finale && flow.finale.is_some() {
+            FINALE_DISPLAY
+        } else {
+            ball.diameter()
+        }
+    })
+}
+
+/// The next star's size on the ring after the goal: the stars lit so far, and the diameter the next
+/// needs; `None` once all four are lit.
+fn next_star(design: &Design, stars: u8) -> Option<(u8, f32)> {
+    let bounds = design
+        .level
+        .grades
+        .unwrap_or(super::progress::DEFAULT_SIZE_GRADES);
+    let goal = design.goal_diameter();
+    (stars >= 1 && (stars as usize) <= bounds.len())
+        .then(|| (stars + 1, bounds[stars as usize - 1] * goal))
+}
+
+/// How full the re-armed ring is between the star just lit and the next.
+fn star_fill(design: &Design, stars: u8, diameter: f32) -> f32 {
+    let goal = design.goal_diameter();
+    match next_star(design, stars) {
+        None => 1.0,
+        Some((_, upper)) => {
+            let bounds = design
+                .level
+                .grades
+                .unwrap_or(super::progress::DEFAULT_SIZE_GRADES);
+            let lower = if stars <= 1 {
+                goal
+            } else {
+                bounds[stars as usize - 2] * goal
+            };
+            ((diameter - lower) / (upper - lower).max(1e-3)).clamp(0.0, 1.0)
         }
     }
 }
@@ -1233,9 +1403,13 @@ fn refresh_widgets(
     let dt = time.delta_secs();
     let now = time.elapsed_secs();
 
-    // The ring fills toward the ball size Hogger needs (the same measure the goal text gives).
-    let need = HOGGER_SIZE / COLLECT_RATIO;
-    let target = if run.won {
+    // The ring fills toward the ball size the goal needs (the same measure the goal text gives).
+    let need = design.goal_diameter() / 2.0;
+    let size_stars = design.goal.kind == GoalKind::Size && !flow.free_roll && run.won;
+    let target = if size_stars {
+        // After the goal the ring re-arms toward the next star.
+        star_fill(&design, run.stars, ball.diameter())
+    } else if run.won {
         1.0
     } else {
         (ball.radius / need).clamp(0.0, 1.0)
@@ -1281,6 +1455,12 @@ fn refresh_widgets(
         m.kt.y = now;
         match widget {
             Widget::Dial => {
+                // Kind 10+ is the dial with stars: 10 + the stars lit + the newest one's pop.
+                m.kt.x = if size_stars && run.stars > 0 {
+                    10.0 + f32::from(run.stars.min(4)) + 0.99 * cues.star_pop
+                } else {
+                    0.0
+                };
                 m.p = Vec4::new(anim.fill, anim.celebrate, cues.tick, cues.bloom);
                 m.kt.w = pulse;
                 if let Some(mut tf) = tf {
@@ -1293,7 +1473,7 @@ fn refresh_widgets(
                 }
             }
             Widget::Clock => {
-                m.p = Vec4::new(elapsed, urgent, f32::from(flow.free_roll), 0.0);
+                m.p = Vec4::new(elapsed, urgent, f32::from(flow.free_roll), flow.call_hold);
             }
             Widget::Item => {
                 m.kt.z = bubble.alpha;
@@ -1372,26 +1552,45 @@ fn refresh_finale(
     flow: Res<Flow>,
     run: Res<Run>,
     ball: Res<BallState>,
+    design: Res<Design>,
+    windows: Query<&Window, With<PrimaryWindow>>,
     mut texts: Query<(
         &FinaleText,
         &mut Text,
         &mut TextColor,
         &mut TextFont,
         &mut TextShadow,
+        &mut Node,
     )>,
     mut flash: Query<&mut BackgroundColor, With<FinaleFlash>>,
 ) {
     let Some(t) = flow.finale else { return };
-    let fade_out = (1.0 - (t - (FINALE_SECS - 0.5)) / 0.5).clamp(0.0, 1.0);
-    for (which, mut text, mut color, mut font, mut shadow) in &mut texts {
+    let fade_out = (1.0 - (t - (flow.finale_len - 0.5)) / 0.5).clamp(0.0, 1.0);
+    let width = UI_HEIGHT * windows.single().map_or(1.0, super::select::aspect_of);
+    for (which, mut text, mut color, mut font, mut shadow, mut node) in &mut texts {
         match which {
             FinaleText::Title => {
-                let pop = 1.0 - (t / 0.4).clamp(0.0, 1.0);
-                let size = 104.0 + 30.0 * pop * pop;
+                let headline = design.win_title().to_uppercase();
+                let size = fit_title(headline.chars().count(), width);
+                if text.0 != headline {
+                    text.0 = headline;
+                }
                 if (font.font_size - size).abs() > 0.5 {
                     font.font_size = size;
                 }
-                let alpha = (t / 0.15).clamp(0.0, 1.0) * fade_out;
+                // Between the dial and the clock when it fits there, else under them (the dial's
+                // label ends near a quarter of the height).
+                let room = width - GOAL_INSET_LEFT - GOAL_INSET_RIGHT;
+                let wide = size * 0.58 * text.0.chars().count() as f32 <= room;
+                let top = Val::Percent(if wide { 0.0 } else { 19.0 });
+                if node.margin.top != top {
+                    node.margin.top = top;
+                }
+                let alpha = if design.goal.kind == GoalKind::Finale {
+                    ((t - 2.3) / 0.2).clamp(0.0, 1.0) * fade_out
+                } else {
+                    (t / 0.15).clamp(0.0, 1.0) * fade_out
+                };
                 color.0 = GOLD.with_alpha(alpha);
                 shadow.color = Color::BLACK.with_alpha(alpha);
             }
@@ -1399,7 +1598,7 @@ fn refresh_finale(
                 let s = format!(
                     "{}   \u{b7}   {}   \u{b7}   {} rolled up",
                     fmt_time(run.elapsed),
-                    fmt_size(ball.diameter()),
+                    fmt_size(shown_diameter(&run, &ball, &design, &flow)),
                     run.count
                 );
                 if text.0 != s {
@@ -1416,29 +1615,149 @@ fn refresh_finale(
     }
 }
 
+/// The win title's size so it fits one line across the screen's `width` UI units: about 0.58 em
+/// per capital, 90 % of the width, between 28 and 64.
+fn fit_title(chars: usize, width: f32) -> f32 {
+    (width * 0.9 / (0.58 * chars.max(1) as f32)).clamp(28.0, 64.0)
+}
+
+/// Fizzwick's porthole: starts on a [`FizzSays`], types the line, holds, slides away. It runs on
+/// real time, so a pause menu does not freeze it (it is small and in a corner), and it gives the
+/// commissioner stage its gesture and its talking flag.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn refresh_pop(
+    real: Res<Time<Real>>,
+    phase: Res<State<Phase>>,
+    ritual: Res<super::ritual::Ritual>,
+    mut says: MessageReader<FizzSays>,
+    mut pop: ResMut<Pop>,
+    mut who: ResMut<Commissioner>,
+    mut hud_mats: ResMut<Assets<HudMaterial>>,
+    mut art_mats: ResMut<Assets<ArtMaterial>>,
+    mut slide: Query<(&mut UiTransform, &mut Visibility), With<FizzSlide>>,
+    porthole: Query<&PortholeMat>,
+    bubble: Query<(&Art, &ComputedNode), With<FizzBubble>>,
+    mut texts: Query<&mut Text, With<FizzText>>,
+) {
+    let dt = real.delta_secs();
+    for s in says.read() {
+        pop.waiting = Some((*s, 0.0));
+    }
+    // It starts once his stage is warm: the window never shows a camera's first, empty frames.
+    if let Some((s, waited)) = pop.waiting.as_mut() {
+        *waited += dt;
+        if who.alpha >= 0.95 {
+            let s = *s;
+            pop.waiting = None;
+            pop.line = s.line;
+            pop.age = Some(0.0);
+            pop.hold = POP_HOLD.max(s.line.chars().count() as f32 / POP_CPS + 1.4);
+            // The gnome's own gesture for the feeling: cheer, laugh or a cry for the lost run.
+            who.gesture = match s.voice {
+                Voice::Cheer => Some(68),
+                Voice::Laugh => Some(70),
+                Voice::Sigh => Some(77),
+                Voice::Gasp => Some(64),
+                Voice::Talk => None,
+            };
+        } else if *waited > POP_WAIT {
+            pop.waiting = None;
+        }
+    }
+    // A pop-in belongs to play (and to the lost run's moment before the panel docks).
+    let place = match phase.get() {
+        Phase::Playing | Phase::Paused => true,
+        Phase::Results => !ritual.docked || ritual.leaving(),
+        _ => false,
+    };
+    if !place {
+        pop.age = None;
+        pop.waiting = None;
+    }
+    let mut x = 1.0;
+    let mut typed = 0;
+    if let Some(age) = pop.age.as_mut() {
+        *age += dt;
+        let a = *age;
+        let total = POP_SLIDE * 2.0 + pop.hold;
+        if a >= total {
+            pop.age = None;
+        } else {
+            let into = (a / POP_SLIDE).clamp(0.0, 1.0);
+            let out = ((total - a) / POP_SLIDE).clamp(0.0, 1.0);
+            x = 1.0 - super::ritual::ease(into.min(out));
+            typed = (((a - POP_SLIDE).max(0.0)) * POP_CPS) as usize;
+        }
+    }
+    let shown = pop.age.is_some();
+    who.pop = shown;
+    who.talking = shown && typed < pop.line.chars().count();
+    for (mut tf, mut vis) in &mut slide {
+        let want = if shown {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != want {
+            *vis = want;
+        }
+        tf.translation = Val2::px(x * (PORTHOLE + POP_BUBBLE + 40.0), 0.0);
+    }
+    for mut t in &mut texts {
+        let s: String = pop.line.chars().take(typed).collect();
+        if t.0 != s {
+            t.0 = s;
+        }
+    }
+    for p in &porthole {
+        if let Some(m) = hud_mats.get_mut(&p.0) {
+            m.kt.y = real.elapsed_secs();
+            m.kt.z = if shown { who.alpha } else { 0.0 };
+        }
+    }
+    for (Art(h), node) in &bubble {
+        if let Some(m) = art_mats.get_mut(h) {
+            let logical = node.size().y * node.inverse_scale_factor();
+            if logical > 1.0 && (m.data.lv[0].x - logical).abs() > 0.5 {
+                m.data.lv[0].x = logical;
+            }
+            m.data.kt.y = real.elapsed_secs();
+        }
+    }
+}
+
 /// The pause screen carries what play no longer prints: the requirement and the tally.
 fn refresh_pause(
     run: Res<Run>,
     ball: Res<BallState>,
     flow: Res<Flow>,
+    design: Res<Design>,
     mut texts: Query<(&PauseText, &mut Text)>,
 ) {
-    let need = HOGGER_SIZE / COLLECT_RATIO;
+    let need = design.goal_diameter() / 2.0;
+    let target = design.goal.target.clone();
     for (which, mut text) in &mut texts {
         let s = match which {
-            PauseText::Goal => {
-                if run.won {
-                    "Hogger is rolled up.".to_string()
-                } else if ball.radius >= need {
-                    "Big enough now: roll up Hogger!".to_string()
-                } else {
-                    format!(
-                        "Roll up Hogger: grow to {} across ({:.0}%)",
-                        fmt_size(2.0 * need),
-                        (ball.radius / need * 100.0).clamp(0.0, 100.0)
-                    )
+            PauseText::Goal => match design.goal.kind {
+                GoalKind::Collect if run.won => format!("{target} is rolled up."),
+                GoalKind::Size if run.won && !flow.free_roll => {
+                    "Goal reached. Finish whenever you like.".to_string()
                 }
-            }
+                GoalKind::Size if run.won => "Goal reached.".to_string(),
+                GoalKind::Collect if ball.radius >= need => {
+                    format!("Big enough now: roll up {target}!")
+                }
+                GoalKind::Collect => format!(
+                    "Roll up {target}: grow to {} across ({:.0}%)",
+                    fmt_size(2.0 * need),
+                    (ball.radius / need * 100.0).clamp(0.0, 100.0)
+                ),
+                GoalKind::Size | GoalKind::Finale => format!(
+                    "Grow to {} across ({:.0}%)",
+                    fmt_size(2.0 * need),
+                    (ball.radius / need * 100.0).clamp(0.0, 100.0)
+                ),
+            },
             PauseText::Detail => {
                 if flow.free_roll {
                     format!(
@@ -1463,13 +1782,19 @@ fn refresh_pause(
 }
 
 /// The title's bests and the Free Roll offer.
-fn refresh_ready(progress: Res<Progress>, mut texts: Query<(&ReadyText, &mut Text)>) {
-    let best = progress.best();
+fn refresh_ready(
+    progress: Res<Progress>,
+    current: Res<CurrentLevel>,
+    design: Res<Design>,
+    mut texts: Query<(&ReadyText, &mut Text)>,
+) {
+    let best = progress.best(current.id());
     for (which, mut text) in &mut texts {
         let s = match which {
+            ReadyText::Level => format!("{}\n{}", design.level.title, design.level.objective),
             ReadyText::Best => {
                 if best.best_time.is_none() && best.most.is_none() {
-                    "Roll up Hogger to set a best time.".to_string()
+                    format!("Win {} to set a best time.", design.level.title)
                 } else {
                     format!(
                         "Best time {}   \u{b7}   Biggest {}\nMost rolled up {}   \u{b7}   Challenges {}/{}",
@@ -1477,7 +1802,7 @@ fn refresh_ready(progress: Res<Progress>, mut texts: Query<(&ReadyText, &mut Tex
                         best.biggest.map_or("--".to_string(), fmt_size),
                         best.most.map_or("--".to_string(), |n| n.to_string()),
                         best.challenges.len(),
-                        CHALLENGES.len()
+                        design.challenges.len()
                     )
                 }
             }
@@ -1491,96 +1816,6 @@ fn refresh_ready(progress: Res<Progress>, mut texts: Query<(&ReadyText, &mut Tex
         };
         if text.0 != s {
             text.0 = s;
-        }
-    }
-}
-
-/// The results: how it ended, the numbers with their records, the ten things rolled up most, and
-/// the optional challenges.
-fn refresh_results(
-    run: Res<Run>,
-    ball: Res<BallState>,
-    flow: Res<Flow>,
-    mut texts: Query<(&ResultText, &mut Text, &mut TextColor)>,
-) {
-    let out = &flow.outcome;
-    let mut log: Vec<(&str, u32)> = run.log.iter().map(|(name, &n)| (&**name, n)).collect();
-    log.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
-    // A record marker, or the record to beat.
-    let note = |new: bool, best: Option<String>| -> (String, Color) {
-        if new {
-            ("NEW BEST!".to_string(), GOLD)
-        } else {
-            (best.map(|b| format!("best {b}")).unwrap_or_default(), DIM)
-        }
-    };
-    for (which, mut text, mut color) in &mut texts {
-        let (s, c) = match *which {
-            ResultText::Title => {
-                if run.won {
-                    ("Hogger, rolled up!".to_string(), GOLD)
-                } else {
-                    ("Time's up".to_string(), GOLD)
-                }
-            }
-            ResultText::Subtitle => {
-                if run.won {
-                    ("Everything is Bind on Pickup.".to_string(), PARCHMENT)
-                } else {
-                    ("Hogger still roams Elwynn.".to_string(), PARCHMENT)
-                }
-            }
-            ResultText::Size => (
-                format!("Final size: {}", fmt_size(ball.diameter())),
-                Color::WHITE,
-            ),
-            ResultText::Time => (format!("Time: {}", fmt_time(run.elapsed)), Color::WHITE),
-            ResultText::Count => (format!("Things rolled up: {}", run.count), Color::WHITE),
-            ResultText::Biggest => (
-                match &run.biggest {
-                    Some((name, size)) => format!("Biggest: {} ({})", name, fmt_size(size * 2.0)),
-                    None => "Biggest: nothing at all".to_string(),
-                },
-                Color::WHITE,
-            ),
-            ResultText::TimeNote => {
-                if run.won {
-                    note(out.new_time, out.before.best_time.map(fmt_time))
-                } else {
-                    (String::new(), DIM)
-                }
-            }
-            ResultText::SizeNote => note(out.new_size, out.before.biggest.map(fmt_size)),
-            ResultText::CountNote => note(out.new_count, out.before.most.map(|n| n.to_string())),
-            ResultText::Log(i) => (
-                log.get(i)
-                    .map(|&(name, n)| format!("{name}  x{n}"))
-                    .unwrap_or_default(),
-                PARCHMENT,
-            ),
-            ResultText::Challenge(i) => match out.challenges.get(i) {
-                Some(c) if c.met => (
-                    format!("[X] {}{}", c.title, if c.fresh { "   NEW!" } else { "" }),
-                    GOLD,
-                ),
-                Some(c) if c.earned => (format!("[X] {}   (earned before)", c.title), GREEN),
-                Some(c) => (format!("[ ] {}", c.title), DIM),
-                None => (String::new(), DIM),
-            },
-            ResultText::Prompt => (
-                if run.won {
-                    "Enter: roll again   \u{b7}   F: Free Roll (untimed)".to_string()
-                } else {
-                    "Press Enter to roll again".to_string()
-                },
-                GOLD,
-            ),
-        };
-        if text.0 != s {
-            text.0 = s;
-        }
-        if color.0 != c {
-            color.0 = c;
         }
     }
 }
@@ -1624,6 +1859,61 @@ mod tests {
         let cap = radius * COLLECT_RATIO;
         let got = find_cluster(Vec3::ZERO, radius, [(at(12.0, 4.0), cap * 0.5)].into_iter());
         assert!(got.is_some());
+    }
+
+    #[test]
+    fn sizes_print_in_inches_then_yards_then_whole_yards() {
+        assert_eq!(fmt_size(0.5), "18 in");
+        assert_eq!(fmt_size(2.4), "2 yd 14 in");
+        assert_eq!(fmt_size(36.0 / 36.0 * 7.0), "7 yd");
+        assert_eq!(fmt_size(23.44), "23.4 yd");
+        assert_eq!(fmt_size(595.0), "595 yd");
+        assert_eq!(fmt_dial(2.4), "2yd 14in");
+        assert_eq!(fmt_dial(595.0), "595yd");
+    }
+
+    #[test]
+    fn the_dial_and_the_finale_agree_on_the_display_size() {
+        let design =
+            crate::azeroll::design::parse(crate::azeroll::campaign::LEVELS[2].recipe).unwrap();
+        let run = Run::default();
+        let ball = BallState::default();
+        let mut flow = Flow::default();
+        assert!(shown_diameter(&run, &ball, &design, &flow) < 10.0);
+        flow.finale = Some(0.5);
+        assert_eq!(shown_diameter(&run, &ball, &design, &flow), FINALE_DISPLAY);
+    }
+
+    #[test]
+    fn the_ring_rearms_toward_the_next_star() {
+        let design =
+            crate::azeroll::design::parse(crate::azeroll::campaign::LEVELS[0].recipe).unwrap();
+        let goal = design.goal_diameter();
+        assert_eq!(star_fill(&design, 1, goal), 0.0);
+        assert!((star_fill(&design, 1, goal * 1.1) - 0.5).abs() < 0.02);
+        assert_eq!(star_fill(&design, 4, goal * 3.0), 1.0);
+        assert_eq!(next_star(&design, 4), None);
+        assert_eq!(next_star(&design, 1).map(|n| n.0), Some(2));
+    }
+
+    #[test]
+    fn titles_fit_one_line_at_every_aspect() {
+        // The three shipped win titles, narrow and wide.
+        for title in [
+            "LAST CALL!",
+            "PRIZE PUMPKIN, ALL ROLLED UP!",
+            "THE CATHEDRAL IS ROLLED UP!",
+        ] {
+            for width in [706.0, 1024.0, 1365.0] {
+                let size = fit_title(title.chars().count(), width);
+                assert!((28.0..=64.0).contains(&size));
+                // At the larger sizes the line really is narrower than the screen.
+                if size > 28.0 {
+                    assert!(size * 0.58 * title.chars().count() as f32 <= width * 0.9 + 0.5);
+                }
+            }
+        }
+        assert!(fit_title(10, 1365.0) == 64.0 && fit_title(80, 706.0) == 28.0);
     }
 
     #[test]

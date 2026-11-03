@@ -11,20 +11,38 @@
 
 mod auto;
 mod ball;
+mod buildings;
 mod camera;
+mod campaign;
+mod city;
+mod city_shell;
+mod city_support;
 mod collect;
 mod creatures;
 mod cutout;
 mod debug_fill;
 mod design;
+mod finale;
+mod fizz;
+mod furniture;
+mod glitch;
 mod hud;
 pub(crate) mod hud_models;
 pub(crate) mod level;
+mod lines;
+mod lod;
 mod music;
 mod names;
 mod npcs;
+mod pad;
+mod placement;
+mod profile;
 mod progress;
 mod props;
+mod ram;
+mod replay;
+mod ritual;
+pub(crate) mod select;
 mod sfx;
 mod survey;
 mod units;
@@ -48,10 +66,14 @@ pub(crate) struct AzerollPlugin;
 impl Plugin for AzerollPlugin {
     fn build(&self, app: &mut App) {
         // Present before `OnEnter(InWorld)`, where the UI lifecycle decides not to load FrameXML.
+        let (current, phase) = campaign::boot();
+        campaign::plugin(app, current);
         app.insert_resource(crate::run_mode::CaptureMode)
-            .init_state::<Phase>()
+            .insert_state(phase)
             .init_resource::<Rng>()
+            .init_resource::<lines::Said>()
             .init_resource::<Run>()
+            .init_resource::<ram::RamGate>()
             .init_resource::<BallState>()
             .add_message::<Collected>()
             .add_message::<Bumped>()
@@ -59,52 +81,76 @@ impl Plugin for AzerollPlugin {
             .add_message::<Touched>()
             .add_message::<GrowthBeat>()
             .add_message::<TierReached>()
+            .add_message::<GoalReached>()
+            .add_message::<StarEarned>()
             .add_message::<Dash>()
             .add_systems(Update, follow_map)
             .add_systems(
                 Update,
                 (
-                    ball::drive_ball,
-                    collect::collect,
+                    ball::drive_ball.run_if(finale::mobile),
+                    collect::collect.run_if(finale::mobile),
                     ball::publish_focus,
                     camera::place_camera,
                 )
                     .chain()
                     .in_set(WorldStage::Input),
             )
-            .add_plugins(cutout::plugin)
+            .add_plugins((
+                cutout::plugin,
+                lod::plugin,
+                finale::plugin,
+                city::plugin,
+                city_support::plugin,
+            ))
             .add_plugins((ball::plugin, camera::plugin, collect::plugin))
             .add_plugins((
                 design::plugin,
+                placement::plugin,
+                select::plugin,
                 unstuck::plugin,
                 props::plugin,
+                furniture::plugin,
                 progress::plugin,
+                replay::plugin,
+                ritual::plugin,
+                fizz::plugin,
                 music::plugin,
                 creatures::plugin,
                 npcs::plugin,
+                pad::plugin,
+            ))
+            .add_plugins((
                 hud::plugin,
                 sfx::plugin,
                 level::plugin,
                 auto::plugin,
                 survey::plugin,
                 debug_fill::plugin,
+                glitch::plugin,
             ))
+            .add_systems(OnEnter(Phase::Select), unpause)
             .add_systems(OnEnter(Phase::Playing), unpause)
             .add_systems(OnEnter(Phase::Paused), pause)
-            .add_systems(OnEnter(Phase::Results), unpause)
-            .add_systems(OnEnter(Phase::Ready), (unpause, reset_run));
+            .add_systems(OnEnter(Phase::Ready), (unpause, reset_run))
+            .add_systems(Startup, loading_art);
     }
 }
 
-/// The screen the mode is on.
+/// The screen the mode is on. The app boots into [`Phase::Select`] (or, with
+/// `WOW_AZEROLL_LEVEL_ID` / `WOW_AZEROLL_AUTO`, straight into a level's `Ready`).
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub(crate) enum Phase {
-    /// The world is loading or waiting for the first input; the ball sits at the start.
+    /// The level-select hub: no level is running, the camera orbits the yard.
     #[default]
+    Select,
+    /// The chosen level's world is loading or waiting for the first input; the ball sits at the
+    /// start.
     Ready,
     Playing,
     Paused,
-    /// The level is over (goal reached or time up); the results panel is up.
+    /// The level is over (goal captured, time up or called): the send-off plays, then the results
+    /// panel docks beside the lifted clump (`ritual`).
     Results,
 }
 
@@ -148,30 +194,39 @@ pub(crate) struct BallState {
     /// The ball's effective radius in yards: what collides, what decides collectability, what the
     /// camera frames. Grows as `cbrt(volume)`.
     pub radius: f32,
+    /// The radius this level started at (the floor shedding cannot go below, the core's size).
+    pub start_radius: f32,
     /// The "volume" growth accumulates into (yards³, unitless scale factor dropped): `radius³`.
     pub volume: f32,
     /// Credited volume compacted from fully buried trophies, never live surface objects.
     pub buried_volume: f32,
     /// On the ground this frame (terrain or a floor hit).
     pub grounded: bool,
+    /// The start's support is known. False only for an indoor start (`Design::start_indoors`)
+    /// until the building's floor collision has loaded; play cannot begin before then, or the ball
+    /// would settle on the terrain under the floor.
+    pub floor_ready: bool,
     /// Seconds of reduced control left after a hard bump.
     pub stun: f32,
 }
 
 impl Default for BallState {
     fn default() -> Self {
-        let r = level::START_RADIUS;
+        // A placeholder until a level is chosen; `reset_run` sets the real start.
+        let r = 0.25;
         Self {
-            pos: units::wow_to_bevy(level::START),
+            pos: Vec3::ZERO,
             vel: Vec3::ZERO,
             spin: Quat::IDENTITY,
             heading: 0.0,
             dash: 0.0,
             dash_cooldown: 0.0,
             radius: r,
+            start_radius: r,
             volume: r * r * r,
             buried_volume: 0.0,
             grounded: false,
+            floor_ready: true,
             stun: 0.0,
         }
     }
@@ -191,7 +246,7 @@ pub(crate) enum Kind {
     Prop,
     /// A local creature unit: rabbits, wolves, Defias.
     Creature,
-    /// The level's goal creature (Hogger).
+    /// The level's goal creature, when its goal is `collect` (Hogger in Market Day).
     Boss,
 }
 
@@ -200,6 +255,7 @@ pub(crate) enum Kind {
 pub(crate) enum Source {
     /// An ADT MDDF placement claimed from the streamer, by `uniqueId`.
     Doodad(u32),
+    WmoProp(benilla_world::terrain_stream::WmoPropKey),
     /// Spawned by the mode itself (scatter copies, creatures).
     Spawned,
 }
@@ -334,12 +390,25 @@ pub(crate) struct TierReached {
     pub diameter: f32,
 }
 
-/// Dash lifecycle, written by `ball`. No wind-up exists in current handling.
+/// A size goal was met for the first time this run (the "goal beat"). Written by `level`.
+#[derive(Message, Debug, Clone, Copy)]
+pub(crate) struct GoalReached {
+    pub diameter: f32,
+    pub goal: f32,
+}
+
+/// The dial lit another star after the goal: `n` is the count now (2..=4). Written by `level`.
+#[derive(Message, Debug, Clone, Copy)]
+pub(crate) struct StarEarned {
+    pub n: u8,
+}
+
+/// Dash lifecycle, written by `ball`: a held dash input winds up (`WindUp`, once) before it bursts.
 /// `Ready` means cooldown crossed zero, not that a dash was requested.
 /// Read BallState::dash/dash_cooldown for continuous UI; do not reconstruct timers.
 #[derive(Message, Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Dash {
-    /// Reserved for Track A's optional effort cue; never emitted without an actual wind-up.
+    /// The wind-up proper has begun (a hold past a tap); the Prince scrambles on the spot.
     WindUp,
     Started,
     Ended,
@@ -349,6 +418,8 @@ pub(crate) enum Dash {
 /// One attempt at the level.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct Run {
+    /// D26 terminal presentation only; never changes collision/growth.
+    pub final_diameter: Option<f32>,
     /// Seconds of play (virtual time, so pause stops it).
     pub elapsed: f32,
     /// Things rolled up.
@@ -357,12 +428,57 @@ pub(crate) struct Run {
     pub biggest: Option<(Cow<'static, str>, f32)>,
     /// The collection log: name → how many.
     pub log: std::collections::BTreeMap<Cow<'static, str>, u32>,
+    /// What the Catalogue needs to know of each name rolled up (`progress::note_finds`).
+    pub finds: std::collections::BTreeMap<Cow<'static, str>, Find>,
+    /// How many of each name's pickups the Catalogue has already been told of, so a merge on pause,
+    /// restart or the results never counts one twice.
+    pub merged: std::collections::BTreeMap<Cow<'static, str>, u32>,
+    /// Names this run found for the first time ever, in the order they were rolled up.
+    pub new_names: Vec<String>,
     /// The goal was met.
     pub won: bool,
+    /// Play seconds at which the goal was first met (a size goal keeps rolling after it).
+    pub goal_time: Option<f32>,
+    /// Stars lit on the dial after a size goal: one at the goal, one per grade boundary beyond.
+    pub stars: u8,
+    /// The player ended the run by holding the finish key.
+    pub called: bool,
     /// A centre-screen announcement and its seconds left.
     pub banner: Option<(String, f32)>,
     /// Creature GUID serials stay unique across resets: caches keyed by guid may outlive a despawn.
     pub next_guid: u64,
+    /// Every pickup in order, for the challenges that care about order and pace (`before`, `within`).
+    pub picks: Vec<Picked>,
+    /// The level's parcel was rolled up (sticky: a shed parcel stays found), and the cousin, with
+    /// whether they were caught inside their window (D33).
+    pub parcel_found: bool,
+    pub cousin: Option<(String, bool)>,
+    /// The save has been told (`Progress::merge_replay`), and whether each flag was new to it.
+    pub parcel_merged: bool,
+    pub cousin_merged: bool,
+    pub parcel_new: bool,
+    pub cousin_new: bool,
+}
+
+/// One pickup of the run's log: what, and when.
+#[derive(Debug, Clone)]
+pub(crate) struct Picked {
+    pub name: Cow<'static, str>,
+    /// The creature species when it is one (a herd member's name is its species).
+    pub species: Option<Cow<'static, str>>,
+    /// Play seconds.
+    pub t: f32,
+}
+
+/// One name's facts for the Catalogue.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Find {
+    /// The biggest axis seen, yards.
+    pub axis: f32,
+    /// A `names::Category` index.
+    pub cat: u8,
+    /// Order of first pickup this run.
+    pub seq: u32,
 }
 
 impl Run {
@@ -413,6 +529,32 @@ fn follow_map(current: Option<ResMut<benilla_world::world_map::CurrentMap>>) {
     }
 }
 
+/// The user's Azeroll painting as the loading screen's backdrop, in place of the map's art.
+fn loading_art(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
+    use bevy::asset::RenderAssetUsages;
+    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+    let bytes = include_bytes!("../../../../assets/art/azeroll-loading.png");
+    match image::load_from_memory_with_format(bytes, image::ImageFormat::Png) {
+        Ok(art) => {
+            let rgba = art.to_rgba8();
+            let (width, height) = rgba.dimensions();
+            let art = Image::new(
+                Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                TextureDimension::D2,
+                rgba.into_raw(),
+                TextureFormat::Rgba8UnormSrgb,
+                RenderAssetUsages::default(),
+            );
+            commands.insert_resource(crate::loading_screen::LoadingArtOverride(images.add(art)));
+        }
+        Err(e) => warn!("azeroll: loading art did not decode, the map's art stays: {e}"),
+    }
+}
+
 fn pause(mut time: ResMut<Time<Virtual>>) {
     time.pause();
 }
@@ -440,6 +582,9 @@ fn reset_run(
     };
     *ball = BallState::default();
     ball.pos = units::wow_to_bevy(design.start);
+    ball.heading = design.start_heading;
     ball.radius = design.start_radius;
+    ball.start_radius = design.start_radius;
+    ball.floor_ready = !design.start_indoors;
     ball.volume = design.start_radius.powi(3);
 }

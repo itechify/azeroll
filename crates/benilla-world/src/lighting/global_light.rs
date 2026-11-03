@@ -452,6 +452,7 @@ mod tests {
     fn the_torch_commits_the_raw_authored_product() {
         let mut app = App::new();
         app.init_resource::<WowLighting>()
+            .init_resource::<FoliageCutout>()
             .init_resource::<crate::dev_state::DebugState>()
             .init_resource::<crate::view::ViewDistance>()
             .init_resource::<WowLightData>()
@@ -555,8 +556,8 @@ mod tests {
 /// Optional screen-space foliage window. All-zero defaults leave ordinary clients unchanged.
 #[derive(Resource, Default)]
 pub struct FoliageCutout {
-    /// Physical viewport pixels: centre x/y, outer radius, reserved.
+    /// Physical viewport pixels: centre x/y, outer radius; world Y below which floor stays solid.
     pub screen: Vec4,
-    /// Maximum planar eye depth, minimum world Y, enabled, reserved.
+    /// Maximum planar eye depth, minimum world Y, enabled, stricter foreground depth.
     pub limits: Vec4,
 }

@@ -1352,3 +1352,198 @@ mod tests {
         }
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// The Catalogue's categories (D31)
+// ---------------------------------------------------------------------------------------------
+
+/// What kind of thing a Catalogue entry is, for grouping and for Fizzwick's line about it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) enum Category {
+    Food,
+    Furniture,
+    Goods,
+    Critters,
+    Folk,
+    Greenery,
+    Buildings,
+    Odds,
+}
+
+impl Category {
+    pub const ALL: [Category; 8] = [
+        Category::Food,
+        Category::Furniture,
+        Category::Goods,
+        Category::Critters,
+        Category::Folk,
+        Category::Greenery,
+        Category::Buildings,
+        Category::Odds,
+    ];
+
+    pub fn from_index(i: u8) -> Self {
+        Self::ALL.get(i as usize).copied().unwrap_or(Category::Odds)
+    }
+
+    pub fn title(self) -> &'static str {
+        match self {
+            Category::Food => "Food & drink",
+            Category::Furniture => "Furniture & household",
+            Category::Goods => "Tools & goods",
+            Category::Critters => "Critters & beasts",
+            Category::Folk => "Folk",
+            Category::Greenery => "Trees & greenery",
+            Category::Buildings => "Buildings & landmarks",
+            Category::Odds => "Odds and ends",
+        }
+    }
+}
+
+/// Keyword rules, checked in order: the first group with a word in the name wins. Barrels and
+/// crates are goods, not drink; the furniture words come before the food ones so a "Pie Table" is
+/// a table.
+const CATEGORY_WORDS: &[(Category, &[&str])] = &[
+    (
+        Category::Buildings,
+        &[
+            "house",
+            "cathedral",
+            "tower",
+            "gate",
+            "bridge",
+            "fence",
+            "wall",
+            "keep",
+            "barracks",
+            "building",
+            "stormwind",
+            "windmill",
+            "church",
+            "inn ",
+            "shed",
+            "stable",
+        ],
+    ),
+    (
+        Category::Goods,
+        &[
+            "barrel",
+            "crate",
+            "sack",
+            "bucket",
+            "anvil",
+            "wagon",
+            "cart",
+            "plank",
+            "rope",
+            "wood pile",
+            "firewood",
+            "fire wood",
+            "hay",
+            "keg",
+            "tool",
+            "hammer",
+            "plow",
+            "chest",
+        ],
+    ),
+    (
+        Category::Furniture,
+        &[
+            "chair",
+            "table",
+            "stool",
+            "bed",
+            "pillow",
+            "bench",
+            "bookshelf",
+            "shelf",
+            "candle",
+            "lamp",
+            "lantern",
+            "rug",
+            "hearth",
+            "fireplace",
+            "book",
+            "boots",
+            "cabinet",
+            "cauldron",
+            "chandelier",
+        ],
+    ),
+    (
+        Category::Food,
+        &[
+            "bread", "loaf", "cheese", "pie", "muffin", "apple", "pumpkin", "mug", "bottle",
+            "wine", "ale", "meat", "ham", "fish", "stew", "cake", "cup", "turnip", "carrot",
+            "corn",
+        ],
+    ),
+    (
+        Category::Greenery,
+        &[
+            "tree", "pine", "bush", "stump", "sapling", "flower", "grass", "fern", "log", "oak",
+            "bramble", "shrub", "mushroom",
+        ],
+    ),
+];
+
+/// The category of a rolled-up thing. `folk` marks an authored cast member (a creature unit from a
+/// cast file), `kind` a creature or the boss; a keyword table decides the props.
+pub(super) fn category(name: &str, kind: super::Kind, folk: bool) -> Category {
+    match kind {
+        super::Kind::Boss => return Category::Folk,
+        super::Kind::Creature => {
+            return if folk {
+                Category::Folk
+            } else {
+                Category::Critters
+            }
+        }
+        super::Kind::Prop => {}
+    }
+    let lower = name.to_ascii_lowercase();
+    CATEGORY_WORDS
+        .iter()
+        .find(|(_, words)| words.iter().any(|w| lower.contains(w)))
+        .map_or(Category::Odds, |(c, _)| *c)
+}
+
+#[cfg(test)]
+mod category_tests {
+    use super::*;
+    use crate::azeroll::Kind;
+
+    #[test]
+    fn signature_names_land_in_their_categories() {
+        let p = |n| category(n, Kind::Prop, false);
+        assert_eq!(p("Muffin"), Category::Food);
+        assert_eq!(p("Cheese Wheel"), Category::Food);
+        assert_eq!(p("Mug"), Category::Food);
+        assert_eq!(p("Chair"), Category::Furniture);
+        assert_eq!(p("Captain's Table"), Category::Furniture);
+        assert_eq!(p("Barrel"), Category::Goods);
+        assert_eq!(p("Fire Wood Pile"), Category::Goods);
+        assert_eq!(p("Hay Pile"), Category::Goods);
+        assert_eq!(p("Elwynn Pine"), Category::Greenery);
+        assert_eq!(p("Cathedral of Light"), Category::Buildings);
+        assert_eq!(p("Stormwind Guard Tower"), Category::Buildings);
+        assert_eq!(p("Mysterious Doodad"), Category::Odds);
+        assert_eq!(category("Rat", Kind::Creature, false), Category::Critters);
+        assert_eq!(
+            category("Innkeeper Farley", Kind::Creature, true),
+            Category::Folk
+        );
+        assert_eq!(category("Hogger", Kind::Boss, false), Category::Folk);
+    }
+
+    #[test]
+    fn categories_index_round_trip_and_have_titles() {
+        for (i, c) in Category::ALL.iter().enumerate() {
+            assert_eq!(Category::from_index(i as u8), *c);
+            assert!(!c.title().is_empty());
+        }
+        assert_eq!(Category::from_index(200), Category::Odds);
+    }
+}

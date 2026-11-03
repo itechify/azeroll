@@ -14,6 +14,10 @@ use benilla_formats::{Atmosphere, LightCatalog};
 
 use super::{daynight, quantize_glow, ClockSource, GameClock, LightSampler, WowLighting};
 
+/// Optional mode-owned outdoor fog distances, measured from the camera. Absent = stock lighting.
+#[derive(Resource, Default)]
+pub struct ModeFogOverride(pub Option<(f32, f32)>);
+
 /// The scene-fog stage (`0x6cee30`): the pushed pair `end = min(zone end, farclip)` and
 /// `start = frac × end`, unclamped. The storm's negative fraction (Elwynn −0.5) floors the near
 /// field at `1 − 1/(1−frac)`, about 33% fog at the eye: the constant storm veil.
@@ -169,6 +173,7 @@ fn hsv_value_scale(c: [f32; 3], f: f32) -> [f32; 3] {
 }
 
 pub(super) fn update_time_lighting(
+    mode_fog: Option<Res<ModeFogOverride>>,
     world_time: Res<super::WorldTime>,
     sampler: Option<Res<LightSampler>>,
     debug: Res<DebugState>,
@@ -183,9 +188,9 @@ pub(super) fn update_time_lighting(
     mut wmo_ramp: ResMut<WmoCrossfade>,
     mut clock: ResMut<GameClock>,
     mut lighting: ResMut<WowLighting>,
-    mut last_dump: Local<Option<u32>>,
-    mut last_fog_dump: Local<Option<u32>>,
+    dumps: (Local<Option<u32>>, Local<Option<u32>>),
 ) {
+    let (mut last_dump, mut last_fog_dump) = dumps;
     // `minute` drives the `Light.dbc` sample, the clock and the log; the fractional `minute_f`
     // drives the celestial positions and curves, which would otherwise step once per game minute.
     let (minute, minute_f, source) = if debug.lighting.follow_server_time {
@@ -251,6 +256,10 @@ pub(super) fn update_time_lighting(
     // Elwynn commits 125/500 clear and −139/278 at full storm (`0x6cee30`): the negative start is
     // the near veil, and the short storm end whites out the middle distance.
     let (fog_start, fog_end) = scene_fog(atmo.fog_end, atmo.fog_start_frac, view.farclip);
+    let (fog_start, fog_end) = mode_fog.as_ref().and_then(|f| f.0)
+        .filter(|(start, end)| start.is_finite() && end.is_finite() && *start >= 0.0 && end > start)
+        .map(|(start, end)| (start.min(view.farclip * 0.9), end.min(view.farclip)))
+        .unwrap_or((fog_start, fog_end));
     // The interior crossfade is its own triple; the scene fog stays untouched. Submerged, the
     // underwater param owns the fog and the ramp is bypassed, as the reference snaps it for magma
     // and slime inside an MFOG interior (`0x6cef6f`); the reference's MFOG underwater block

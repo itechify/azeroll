@@ -16,17 +16,52 @@ use benilla_world::world_point::WorldPoint;
 use bevy::prelude::*;
 
 use super::ball::{top_speed, CorePop};
-use super::level::{COLLECT_RATIO, DISLODGE_RATIO, FILL_FACTOR, START_RADIUS};
+use super::level::{COLLECT_RATIO, DISLODGE_RATIO, FILL_FACTOR};
 use super::{
     Attached, BallSpin, BallState, Bumped, Collected, Collectible, Phase, Rng, Run, RunEntity,
+    Source,
 };
 use crate::entities::Carried;
 use crate::net::NetEntity;
 
+/// Permanent blocker footprints hide bait covered by the authored replacement.
+/// Project the target's own extents into the box frame: a tall harness/post
+/// protruding above a haystack must not become a fresh target after growth.
+/// Separate storeys and food on any upward walkable face remain eligible.
+pub(super) fn hidden_by_blocker(
+    target_tf: &Transform,
+    target: &Collectible,
+    blocker_tf: &Transform,
+    blocker: &Collectible,
+) -> bool {
+    if blocker.pickup.is_finite() || blocker.solid <= 0. {
+        return false;
+    }
+    let inverse = blocker_tf.rotation.inverse();
+    let centre = inverse
+        * (target_tf.transform_point(target.center) - blocker_tf.transform_point(blocker.center));
+    let rotation = inverse * target_tf.rotation;
+    let half = target.half_extents * target_tf.scale.abs();
+    let extent = (rotation * Vec3::X).abs() * half.x
+        + (rotation * Vec3::Y).abs() * half.y
+        + (rotation * Vec3::Z).abs() * half.z;
+    let bounds = blocker.half_extents * blocker_tf.scale.abs();
+    if !centre.abs().cmple(bounds + extent).all() {
+        return false;
+    }
+    for (axis, direction) in [Vec3::X, Vec3::Y, Vec3::Z].into_iter().enumerate() {
+        let up = (blocker_tf.rotation * direction).y;
+        if up.abs() > 0.6 && up.signum() * centre[axis] - extent[axis] >= bounds[axis] - 0.02 {
+            return false;
+        }
+    }
+    true
+}
+
 /// A thing touches the ball when its centre is within `radius + size * TOUCH` of the ball's.
 const TOUCH: f32 = 0.9;
 
-const MAX_TROPHIES: usize = 500;
+use super::lod::MAX_TROPHIES;
 /// Bounce off a solid thing keeps this much of the closing speed.
 const RESTITUTION: f32 = 0.35;
 /// A bump faster than this (yards/s along the normal) is a [`Bumped`] message and a stun.
@@ -59,6 +94,11 @@ pub(super) struct Shed {
     pub vel: Vec3,
 }
 
+/// Authored planted props keep their solid base until edible instead of being
+/// launched in the intermediate dislodge band. Pickup size and credit are unchanged.
+#[derive(Component)]
+pub(super) struct Planted;
+
 // Preserve existing sibling imports while the shared vocabulary lives in mod.rs.
 pub(super) use super::{Contact, Ram};
 use super::{TouchState, Touched};
@@ -88,6 +128,7 @@ pub(super) fn plugin(app: &mut App) {
         Update,
         (restore_reactions, seat_debug_trophies)
             .chain()
+            .before(super::lod::CacheClump)
             .before(WorldStage::Input),
     )
     .add_systems(Update, (shed_fly, log_bumps).after(WorldStage::Input))
@@ -189,6 +230,7 @@ fn seat_debug_trophies(
         Has<Reaction>,
     )>,
 ) {
+    let _profile = super::profile::span("collect::seat_debug_trophies");
     let fresh: Vec<_> = trophies
         .iter_mut()
         .filter(|(_, _, a, _, reacting)| a.is_added() && !reacting)
@@ -218,7 +260,7 @@ fn seat_debug_trophies(
             tf.scale,
             rotation,
             dir,
-            super::ball::shell_radius(ball.buried_volume),
+            super::ball::shell_radius(ball.start_radius, ball.buried_volume),
             ball.radius,
             &seats,
         );
@@ -330,9 +372,51 @@ pub(super) fn contact(radius: f32, axis: f32) -> Contact {
     }
 }
 
+fn loose_contact(radius: f32, axis: f32, planted: bool) -> Contact {
+    match contact(radius, axis) {
+        Contact::Dislodge if planted => Contact::Wall,
+        state => state,
+    }
+}
+
 /// Claimed fences use the same thin oriented bounds as authored gates.
 pub(super) fn boxed_solid(thing: &Collectible, gate: bool) -> bool {
-    gate || thing.name.contains("Fence") || thing.name.contains("fence")
+    gate || (thing.solid > 0.0 && !super::props::trunk_solid(&thing.name))
+}
+
+/// D29: loose Wall/Dislodge objects support the sphere until they move or become edible.
+pub(super) fn solid_rest(
+    tf: &Transform,
+    c: &Collectible,
+    pos: Vec3,
+    r: f32,
+    gate: bool,
+) -> Option<f32> {
+    if c.solid <= 0. || contact(r, c.pickup) == Contact::RollUp {
+        return None;
+    }
+    // Tree collision remains a basal trunk, never a canopy-sized platform.
+    if !gate && super::props::trunk_solid(&c.name) {
+        return None;
+    }
+    let center = tf.transform_point(c.center);
+    let half = c.half_extents * tf.scale.abs();
+    if super::units::flat(center - pos).length() > half.length() + r {
+        return None;
+    }
+    if super::furniture::shaped(c) {
+        // Leg tops meet the underside of the slab: they are internal faces,
+        // not platforms that can hold a sphere inside the seat.
+        super::furniture::world_boxes(tf, c, r)
+            .into_iter()
+            .take(1)
+            .filter_map(|(center, half)| {
+                super::furniture::box_rest(center, half, tf.rotation, pos, r)
+            })
+            .max_by(f32::total_cmp)
+    } else {
+        super::furniture::box_rest(center, half, tf.rotation, pos, r)
+    }
 }
 
 /// Horizontal correction against the same authored solid used by recovery clearance.
@@ -345,8 +429,44 @@ pub(super) fn solid_push(
     radius: f32,
     boxed: bool,
 ) -> Option<Vec3> {
-    if thing.solid <= 0.0 || contact(radius, thing.pickup) != Contact::Wall {
+    solid_push_with_contact(tf, thing, pos, radius, boxed, contact(radius, thing.pickup))
+}
+
+fn solid_push_with_contact(
+    tf: &Transform,
+    thing: &Collectible,
+    pos: Vec3,
+    radius: f32,
+    boxed: bool,
+    state: Contact,
+) -> Option<Vec3> {
+    if thing.solid <= 0.0 || state != Contact::Wall {
         return None;
+    }
+    // A supported sphere is outside the side wall, including the rounded edge cap.
+    if solid_rest(tf, thing, pos, radius, boxed).is_some_and(|h| pos.y >= h - 0.003) {
+        return None;
+    }
+    if super::furniture::shaped(thing) {
+        let reach = radius + (thing.half_extents * tf.scale.abs()).length();
+        if pos.distance_squared(tf.transform_point(thing.center)) >= reach * reach {
+            return None;
+        }
+        let mut corrected = pos;
+        for (center, half) in super::furniture::world_boxes(tf, thing, radius) {
+            let mut part = thing.clone();
+            part.source = Source::Spawned;
+            part.name = "".into();
+            part.center = Vec3::ZERO;
+            part.half_extents = half;
+            let box_tf = Transform::from_translation(center).with_rotation(tf.rotation);
+            if let Some(push) =
+                solid_push_with_contact(&box_tf, &part, corrected, radius, true, state)
+            {
+                corrected += push;
+            }
+        }
+        return (corrected != pos).then_some(corrected - pos);
     }
     let mut centre = tf.transform_point(thing.center);
     if super::props::trunk_solid(&thing.name) {
@@ -397,6 +517,70 @@ pub(super) fn solid_push(
     }
 }
 
+/// Resolve a spawn/recovery overlap before an engine sweep begins inside a wall.
+/// Reuse the live solid shapes, but Dislodge solids also need clearance at spawn.
+pub(super) fn resolve_solid_overlaps<'a>(
+    start: Vec3,
+    r: f32,
+    solids: impl Iterator<Item = (&'a Transform, &'a Collectible, bool)>,
+) -> Vec3 {
+    let solids: Vec<_> = solids
+        .filter(|(_, c, _)| c.solid > 0. && contact(r, c.pickup) != Contact::RollUp)
+        .collect();
+    let push = |p: Vec3, &(tf, c, gate): &(&Transform, &Collectible, bool)| {
+        if p.distance_squared(tf.transform_point(c.center))
+            > ((c.half_extents * tf.scale.abs()).length() + r).powi(2)
+        {
+            return None;
+        }
+        if contact(r, c.pickup) == Contact::Wall {
+            solid_push(tf, c, p, r, gate)
+        } else {
+            let mut wall = c.clone();
+            wall.pickup = f32::INFINITY;
+            solid_push(tf, &wall, p, r, gate)
+        }
+    };
+    let clear = |p| solids.iter().all(|s| push(p, s).is_none());
+    let mut pos = start;
+    for _ in 0..16 {
+        let Some(delta) = solids
+            .iter()
+            .filter_map(|s| push(pos, s))
+            .min_by(|a, b| a.length_squared().total_cmp(&b.length_squared()))
+        else {
+            return pos;
+        };
+        pos += delta + delta.normalize_or_zero() * 0.002;
+    }
+    // Adjacent boxes can push toward each other. Try the outer faces of the
+    // intersecting boxes and choose the nearest position clear of their union.
+    let mut candidates = Vec::new();
+    for &(tf, c, gate) in &solids {
+        if push(start, &(tf, c, gate)).is_none() && push(pos, &(tf, c, gate)).is_none() {
+            continue;
+        }
+        let centre = tf.transform_point(c.center);
+        let half = c.half_extents * tf.scale.abs();
+        let local = tf.rotation.inverse() * (start - centre);
+        for axis in [0, 2] {
+            for sign in [-1., 1.] {
+                let mut p = local;
+                p[axis] = sign * (half[axis] + r + 0.002);
+                candidates.push(centre + tf.rotation * p);
+            }
+        }
+    }
+    if let Some(p) = candidates.into_iter().filter(|p| clear(*p)).min_by(|a, b| {
+        a.distance_squared(start)
+            .total_cmp(&b.distance_squared(start))
+    }) {
+        return p;
+    }
+    warn!("azeroll solid overlap: adjacent solids still intersect after bounded resolution at {pos:?} r={r}");
+    pos
+}
+
 /// Conservative volume for a box with this full maximum axis (used by D10 validation).
 pub(super) fn growth(axis: f32, _radius: f32) -> f32 {
     axis.powi(3) * FILL_FACTOR * 3.0 / (4.0 * std::f32::consts::PI)
@@ -405,6 +589,11 @@ pub(super) fn growth(axis: f32, _radius: f32) -> f32 {
 /// Fully enclosed well below the collision surface; keep protruding trophies alive.
 fn buried(trophy: &Attached, radius: f32) -> bool {
     trophy.radial + trophy.size < 0.62 * radius
+}
+
+/// Conservative broadphase shared by the runtime and its differential geometry test.
+fn outside_clump(to: Vec3, radius: f32, trophy_reach: f32, size: f32) -> bool {
+    to.length_squared() >= (radius.max(trophy_reach) + size * TOUCH).powi(2)
 }
 
 /// Roll up, bump, shed and bury, once a frame while playing.
@@ -421,7 +610,7 @@ pub(super) fn collect(
     mut collected: MessageWriter<Collected>,
     mut bumped: MessageWriter<Bumped>,
     mut touched: MessageWriter<Touched>,
-    mut touch_cooldowns: Local<std::collections::HashMap<Entity, f32>>,
+    maintenance: (Local<std::collections::HashMap<Entity, f32>>, Local<f32>),
     mut rams: MessageReader<Ram>,
     spin_q: Query<Entity, With<BallSpin>>,
     things: Query<
@@ -431,11 +620,19 @@ pub(super) fn collect(
             &Collectible,
             Has<NetEntity>,
             Has<super::design::Gate>,
+            Has<Planted>,
         ),
-        (Without<Attached>, Without<Shed>),
+        (
+            Without<Attached>,
+            Without<Shed>,
+            Without<super::city::CityTarget>,
+        ),
     >,
-    trophies: Trophies,
+    clump: (Trophies, Res<super::lod::Clump>),
 ) {
+    let _profile = super::profile::span("collect::collect");
+    let (mut touch_cooldowns, mut next_bury) = maintenance;
+    let (trophies, clump) = clump;
     if *phase.get() != Phase::Playing || loading.covering() {
         return;
     }
@@ -447,10 +644,10 @@ pub(super) fn collect(
     let unspin = spin.inverse();
     let mut hardest = 0.0_f32;
     let mut added = Vec::new();
-    let mut seats: Vec<_> = trophies
-        .iter()
-        .map(|(_, t, _, c)| (*t, c.clone()))
-        .collect();
+    // Seat data is needed only on pickup. A quiet frame must not clone every trophy name.
+    let mut seats = None;
+    // Conservative envelope for *all* adhesive boxes (not just the collision sphere).
+    let trophy_reach = clump.reach;
     let now = time.elapsed_secs();
     touch_cooldowns.retain(|_, until| *until > now);
     let mut emit_touch = |event: Touched| {
@@ -478,13 +675,18 @@ pub(super) fn collect(
         });
     }
 
-    for (entity, tf, thing, is_unit, is_gate) in &things {
+    for (entity, tf, thing, is_unit, is_gate, planted) in &things {
         let radius = ball.radius;
         let centre = tf.transform_point(thing.center);
         let to = centre - ball.pos;
 
-        let state = contact(radius, thing.pickup);
+        let state = loose_contact(radius, thing.pickup, planted);
         if state == Contact::RollUp {
+            // Triangle inequality: outside this sphere no point on any trophy OBB can touch.
+            // Keep the exact OBB test below for protrusions inside the envelope.
+            if outside_clump(to, radius, trophy_reach, thing.size) {
+                continue;
+            }
             // Protruding trophies are adhesive too: test their oriented boxes. Otherwise a
             // pole lifts the core out of reach of every small object on the ground.
             let touches_trophy = || {
@@ -506,8 +708,14 @@ pub(super) fn collect(
                 dir,
                 rng.range(-0.5, 0.5),
             );
-            let shell = super::ball::shell_radius(ball.buried_volume);
-            let local = seat(thing, tf.scale, rotation, dir, shell, radius, &seats);
+            let shell = super::ball::shell_radius(ball.start_radius, ball.buried_volume);
+            let seats = seats.get_or_insert_with(|| {
+                trophies
+                    .iter()
+                    .map(|(_, t, _, c)| (*t, c.clone()))
+                    .collect::<Vec<_>>()
+            });
+            let local = seat(thing, tf.scale, rotation, dir, shell, radius, seats);
             let radial = local.transform_point(thing.center).length();
             let volume = thing.volume(tf.scale);
             let attachment = Attached {
@@ -589,7 +797,8 @@ pub(super) fn collect(
                 );
             }
         } else if thing.solid > 0.0 {
-            let Some(push) = solid_push(tf, thing, ball.pos, radius, is_gate) else {
+            let Some(push) = solid_push_with_contact(tf, thing, ball.pos, radius, is_gate, state)
+            else {
                 continue;
             };
             if crate::webenv::var("WOW_AZEROLL_STALL_DEBUG").is_some()
@@ -638,26 +847,36 @@ pub(super) fn collect(
         }
     }
 
-    // Absorb only fully hidden trophies. At the safety cap, deepest/oldest go first.
-    let mut visible = Vec::new();
-    for (entity, trophy) in trophies.iter().map(|(e, _, a, _)| (e, *a)).chain(added) {
-        if buried(&trophy, ball.radius) && run.elapsed - trophy.at >= 0.6 {
-            ball.buried_volume += trophy.volume;
-            commands.entity(entity).despawn();
-        } else {
-            visible.push((entity, trophy));
+    // One retirement batch per quarter second, independent of pickup frequency. Credit stays
+    // in ball.volume; only the visual representation moves into the D3 debris shell.
+    let mut capped = Vec::new();
+    if now >= *next_bury || now + 1.0 < *next_bury {
+        *next_bury = now + 0.25;
+        let mut visible = Vec::new();
+        for (entity, trophy) in trophies.iter().map(|(e, _, a, _)| (e, *a)).chain(added) {
+            if clump.settled(entity, run.elapsed - trophy.at, now)
+                && (buried(&trophy, ball.radius) || trophy.size < ball.radius / 24.0)
+            {
+                ball.buried_volume += trophy.volume;
+                capped.push(entity);
+                commands.entity(entity).despawn();
+            } else {
+                visible.push((entity, trophy));
+            }
         }
-    }
-    let excess = visible.len().saturating_sub(MAX_TROPHIES);
-    visible.sort_by(|a, b| {
-        (a.1.radial + a.1.size)
-            .total_cmp(&(b.1.radial + b.1.size))
-            .then_with(|| a.1.at.total_cmp(&b.1.at))
-    });
-    let capped: Vec<_> = visible.iter().take(excess).map(|(e, _)| *e).collect();
-    for (entity, trophy) in visible.iter().take(excess) {
-        ball.buried_volume += trophy.volume;
-        commands.entity(*entity).despawn();
+        let excess = visible.len().saturating_sub(MAX_TROPHIES);
+        if excess > 0 {
+            visible.sort_by(|a, b| {
+                (a.1.radial + a.1.size)
+                    .total_cmp(&(b.1.radial + b.1.size))
+                    .then_with(|| a.1.at.total_cmp(&b.1.at))
+            });
+            for (entity, trophy) in visible.iter().take(excess) {
+                ball.buried_volume += trophy.volume;
+                capped.push(*entity);
+                commands.entity(*entity).despawn();
+            }
+        }
     }
 
     // A hard bump knocks the most recent small trophies off.
@@ -720,7 +939,7 @@ fn shed(
 
         // Its volume comes back out of the ball, which never drops below its starting size, and it
         // is no longer rolled up as far as the score goes (it can be picked up again).
-        ball.volume = (ball.volume - trophy.volume).max(START_RADIUS.powi(3));
+        ball.volume = (ball.volume - trophy.volume).max(ball.start_radius.powi(3));
         ball.radius = ball.volume.cbrt();
         run.count = run.count.saturating_sub(1);
         let emptied = run.log.get_mut(&thing.name).map(|n| {
@@ -797,6 +1016,101 @@ fn log_bumps(mut bumps: MessageReader<Bumped>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_spawn_inside_a_rotated_post_and_fence_gets_clear() {
+        let fence = Collectible {
+            name: "Fence".into(),
+            kind: super::super::Kind::Prop,
+            source: Source::Spawned,
+            size: 4.,
+            pickup: 8.,
+            half_extents: Vec3::new(4., 2., 0.15),
+            center: Vec3::ZERO,
+            solid: 4.,
+        };
+        let post = Collectible {
+            half_extents: Vec3::new(0.2, 3., 0.2),
+            ..fence.clone()
+        };
+        for yaw in [0., 0.7] {
+            let tf = Transform::from_rotation(Quat::from_rotation_y(yaw));
+            let start = Vec3::Y * 1.31;
+            let solids = [(&tf, &fence, false), (&tf, &post, false)];
+            let pos = resolve_solid_overlaps(start, 1.31, solids.into_iter());
+            assert!(pos.distance(start) > 1.31);
+            assert!(solids
+                .iter()
+                .all(|(t, c, g)| solid_push(t, c, pos, 1.31, *g).is_none()));
+            assert_eq!(resolve_solid_overlaps(pos, 1.31, solids.into_iter()), pos);
+            let top = Vec3::Y * 3.31;
+            assert_eq!(
+                resolve_solid_overlaps(top, 1.31, [(&tf, &fence, false)].into_iter()),
+                top,
+                "a ball standing on a solid top must not be expelled"
+            );
+        }
+    }
+
+    #[test]
+    fn permanent_blockers_mask_covered_bait_but_not_tops_other_floors_or_detours() {
+        let mut blocker = Collectible {
+            name: "haystack".into(),
+            kind: super::super::Kind::Prop,
+            source: Source::Spawned,
+            size: 4.,
+            pickup: f32::INFINITY,
+            half_extents: Vec3::new(3.3, 2., 3.4),
+            center: Vec3::ZERO,
+            solid: 3.3,
+        };
+        let tf = Transform::from_xyz(12., 3., -7.).with_rotation(Quat::from_rotation_y(0.7));
+        let food = Collectible {
+            half_extents: Vec3::splat(0.25),
+            size: 0.4,
+            pickup: 0.5,
+            solid: 0.,
+            ..blocker.clone()
+        };
+        let at = |p| {
+            Transform::from_translation(tf.transform_point(p))
+                .with_rotation(Quat::from_rotation_y(-0.3))
+        };
+        assert!(hidden_by_blocker(&at(Vec3::X), &food, &tf, &blocker));
+        assert!(
+            hidden_by_blocker(&at(Vec3::X * 3.2), &food, &tf, &blocker),
+            "item extent margins cover bait at the blocker edge"
+        );
+        assert!(
+            !hidden_by_blocker(&at(Vec3::X * 4.), &food, &tf, &blocker),
+            "food beyond the extent margin still merits a detour"
+        );
+        assert!(
+            !hidden_by_blocker(&at(Vec3::Y * -4.), &food, &tf, &blocker),
+            "a cellar underneath the blocker is a separate storey"
+        );
+        let harness = Collectible {
+            half_extents: Vec3::new(0.3, 3., 0.3),
+            ..food.clone()
+        };
+        assert!(
+            hidden_by_blocker(&at(Vec3::ZERO), &harness, &tf, &blocker),
+            "a tall model protruding above the replacement is still covered bait"
+        );
+        assert!(
+            !hidden_by_blocker(&at(Vec3::Y * 2.25), &food, &tf, &blocker),
+            "food on the climbable top stays food"
+        );
+        assert!(
+            !hidden_by_blocker(&at(Vec3::Z * 7.), &food, &tf, &blocker),
+            "food behind the blocker still merits a detour"
+        );
+        blocker.pickup = 6.8;
+        assert!(
+            !hidden_by_blocker(&at(Vec3::X), &food, &tf, &blocker),
+            "ordinary furniture can be eaten later"
+        );
+    }
 
     #[test]
     fn seating_compresses_outward_branches_into_the_growth_envelope() {
@@ -894,6 +1208,46 @@ mod tests {
     }
 
     #[test]
+    fn planted_props_keep_their_trunk_wall_until_normal_pickup() {
+        let tree = Collectible {
+            name: "Elwynn Canopy Tree".into(),
+            kind: super::super::Kind::Prop,
+            source: Source::Spawned,
+            size: 12.,
+            pickup: 20.,
+            half_extents: Vec3::new(8., 10., 8.),
+            center: Vec3::new(3., 8., 2.),
+            solid: 0.5,
+        };
+        let tf = Transform::from_rotation(Quat::from_rotation_y(0.7));
+        let volume = tree.volume(tf.scale);
+        for r in [3., 15., 20., 21.5, 25.] {
+            let ordinary = contact(r, tree.pickup);
+            assert_eq!(loose_contact(r, tree.pickup, false), ordinary);
+            let planted = loose_contact(r, tree.pickup, true);
+            if ordinary == Contact::RollUp {
+                assert_eq!(planted, Contact::RollUp);
+            } else {
+                assert_eq!(planted, Contact::Wall);
+            }
+            let beside = Vec3::new(r + 0.4, r, 0.);
+            assert_eq!(
+                solid_push_with_contact(&tf, &tree, beside, r, false, planted).is_some(),
+                planted == Contact::Wall,
+                "the planted dislodge band must reach the actual basal trunk correction"
+            );
+            assert!(
+                solid_push_with_contact(&tf, &tree, Vec3::new(r + 0.6, r, 0.), r, false, planted,)
+                    .is_none(),
+                "the canopy must not become a wide wall"
+            );
+        }
+        assert!(solid_push(&tf, &tree, Vec3::new(15.4, 15., 0.), 15., false).is_none());
+        assert_eq!(tree.pickup, 20.);
+        assert_eq!(tree.volume(tf.scale), volume);
+    }
+
+    #[test]
     fn box_volume_is_additive_and_thin_boxes_credit_less() {
         let mut thing = Collectible {
             name: "test".into(),
@@ -910,9 +1264,10 @@ mod tests {
         thing.half_extents.y = 0.1;
         assert!((thing.volume(Vec3::ONE) - volume * 0.1).abs() < 1e-6);
         assert!((thing.volume(Vec3::splat(2.0)) - volume * 0.8).abs() < 1e-6);
-        let r = (START_RADIUS.powi(3) + volume).cbrt();
+        let start = 0.25_f32;
+        let r = (start.powi(3) + volume).cbrt();
         let restored = (r.powi(3) - volume).cbrt();
-        assert!((restored - START_RADIUS).abs() < 1e-5);
+        assert!((restored - start).abs() < 1e-5);
     }
 
     #[test]
@@ -933,5 +1288,40 @@ mod tests {
         assert!(2.0 * 0.75 >= DISLODGE_RATIO * axis);
         assert!(axis > COLLECT_RATIO * 1.074);
         assert!(axis <= COLLECT_RATIO * 1.0751);
+    }
+}
+
+#[cfg(test)]
+mod lod_contact_tests {
+    use super::*;
+
+    #[test]
+    fn envelope_keeps_offset_rotated_and_nonuniform_trophy_contacts() {
+        // Surface samples exercise the actual contact math, including protrusions well beyond r.
+        for angle in [0.0, 0.7, 2.1] {
+            for scale in [Vec3::ONE, Vec3::new(0.3, 2.0, 1.2)] {
+                let tf = Transform {
+                    translation: Vec3::new(2.0, -0.3, 0.7),
+                    rotation: Quat::from_euler(EulerRot::XYZ, angle, 0.4, -angle),
+                    scale,
+                };
+                let centre = Vec3::new(0.3, 0.7, -0.2);
+                let half = Vec3::new(0.2, 0.4, 2.0) * scale;
+                let reach = tf.transform_point(centre).length() + half.length();
+                for x in [-1.0, 0.0, 1.0] {
+                    for y in [-1.0, 0.0, 1.0] {
+                        for z in [-1.0, 0.0, 1.0] {
+                            let to = tf.transform_point(centre)
+                                + tf.rotation * (half * Vec3::new(x, y, z));
+                            let local = tf.rotation.inverse() * (to - tf.translation);
+                            let gap = local - scale * centre;
+                            assert!((gap - gap.clamp(-half, half)).length() < 0.01);
+                            assert!(!outside_clump(to, 0.5, reach, 0.02));
+                        }
+                    }
+                }
+                assert!(outside_clump(Vec3::splat(1000.0), 0.5, reach, 0.02));
+            }
+        }
     }
 }

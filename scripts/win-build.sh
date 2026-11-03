@@ -41,7 +41,7 @@ printf '%s\r\n' \
     '@echo off' \
     'cd /d "%~dp0"' \
     'set "WOW_DATA=%~dp0Data"' \
-    'echo Azeroll: loading Elwynn Forest. The world takes about 2 minutes on first launch.' \
+    'echo Azeroll: loading the world. It takes about 2 minutes on first launch.' \
     'azeroll.exe' \
     'if errorlevel 1 pause' >"$PKG/Play Azeroll.bat"
 printf '%s\r\n' \
@@ -50,8 +50,17 @@ printf '%s\r\n' \
     'Put the WoW 1.12.1 client'"'"'s Data\*.MPQ files in the Data folder next to this file,' \
     'then run "Play Azeroll.bat".' \
     '' \
-    'W/S roll, A/D turn, Shift dash, Space quick turn, mouse drag/wheel camera,' \
-    'Esc pause, R restart, Enter to roll again at the results.' >"$PKG/README.txt"
+    'Level select: arrows or A/D (or the mouse) choose, Enter rolls, F Free Roll once won.' \
+    'In a level: W/S roll, A/D turn, Shift dash (hold to wind up), Space quick turn, mouse drag/wheel camera,' \
+    'Esc pause (L back to level select), R restart.' \
+    'Results: Enter back to level select, R roll again, F Free Roll.' \
+    '' \
+    'Gamepad (Katamari twin-stick): both sticks up/down roll, one up and one down spins on the spot,' \
+    'both sideways strafe. Waggle the sticks up/down to wind up a dash, or hold A and let go.' \
+    'X (or click both sticks) quick turn, L1/R1 swing the camera, d-pad up/down zoom, L2/R2 peek,' \
+    'Start pause, Y hold to call a run. Menus: d-pad or left stick, A choose, B back, X restart,' \
+    'Y Free Roll (results) or leave (pause). Select on the pause screen switches to simple mode' \
+    '(left stick steers like a car, right stick works the camera).' >"$PKG/README.txt"
 rm -f "$OUT/azeroll-win.zip"
 (cd "$OUT" && zip -q -r -9 azeroll-win.zip azeroll-win)
 echo "packaged $OUT/azeroll-win.zip"

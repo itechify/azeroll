@@ -270,12 +270,12 @@ function createBootUi() {
     embers.appendChild(e);
   }
   const tips = [
-    'Your spells cast themselves. Your only job is to not die.',
-    'Gems pull toward you once you are close. Greed gets heroes killed.',
-    'A boss arrives every couple of minutes. You will hear about it.',
-    'From level 5, F casts your class\u2019s escape. Blink, Charge, Sprint\u2026',
-    'Rare and Epic cards are worth more than they look. Legendary always is.',
-    'Press C to unlock the camera and swing it around with the mouse.',
+    'Roll up anything smaller than your ball. Everything else is a wall, for now.',
+    'Big things become small things. Come back for them later.',
+    'Hold Shift (or waggle both sticks) to wind up a dash.',
+    'Once you reach the goal, keep rolling for more stars, or press Call it! to finish.',
+    'Every level hides a gift and one of Fizzwick\u2019s cousins.',
+    'Press C on the planet to open Fizzwick\u2019s Catalogue.',
   ];
   const tipEl = root.querySelector('.tip');
   let tipN = Math.floor(Math.random() * tips.length);
@@ -303,7 +303,7 @@ function createBootUi() {
         const pct = Math.min(99, Math.floor((got / total) * 100));
         const done = got >= total;
         stageEl.textContent = done
-          ? 'Summoning the horde…'
+          ? 'Winding up the reclamation device…'
           : `Downloading the client — ${pct}%`;
         fillEl.style.width = (done ? 100 : pct) + '%';
       } else {
